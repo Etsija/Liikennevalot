@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">Liikennevalot</string>
+    <string name="action_settings">Settings</string>
+    <string name="hello_world">Hello world!</string>
+    
+    <string-array name="listat_nimet">
+        <item>Kuopio</item>
+        <item>Tampere</item>
+        <item>Oulu</item>
+        <item>Helsinki</item>
+    </string-array>
+    
+</resources>
