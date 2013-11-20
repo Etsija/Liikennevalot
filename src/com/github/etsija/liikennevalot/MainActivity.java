@@ -13,11 +13,18 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Scanner;
 
+import org.jgeohash.GeoHashUtils;
+
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.media.AudioManager;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.media.SoundPool;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.app.Activity;
@@ -60,6 +67,11 @@ public class MainActivity extends Activity {
 	    mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, mLocationListener);
 	    geocoder = new Geocoder(this, Locale.ENGLISH);  // For address search
 	    
+	    // Button sounds
+		final SoundPool sp = new SoundPool(5, AudioManager.STREAM_MUSIC, 0);
+		final int soundGreen = sp.load(this, R.raw.green, 1);
+		final int soundRed   = sp.load(this, R.raw.red, 1);
+		
 		// Fetch all preferences into prefKeys HashMap
 		final SharedPreferences settings = getPreferences(Context.MODE_PRIVATE);
 	    lastList = settings.getString("lastList", null);
@@ -73,6 +85,32 @@ public class MainActivity extends Activity {
 		countRed = countEntries(lastList + ".txt", "RED");
 		countGreen = countEntries(lastList + ".txt", "GREEN");
 		
+		// Blue button to add an intersection
+		final Button btnIntersection = (Button) findViewById(R.id.intersection);
+		btnIntersection.getBackground().setColorFilter(Color.BLUE, Mode.MULTIPLY);
+		btnIntersection.setTextColor(Color.WHITE);
+		btnIntersection.setTextSize(20);
+		btnIntersection.setText("Lisää risteys");
+		/*
+		// Click: add a new intersection for this list
+		btnIntersection.setOnClickListener(new OnClickListener() {
+	        public void onClick(View v) {
+	        	v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+	        	String strAddr = getAddressFromLoc(currLocation);
+	        	sp.play(soundRed, 0.3f, 0.3f, 0, 0, 1);
+	        	//DataEntry testEntry = new DataEntry(getNow(), "RED", currLocation, strAddr);
+	        	countRed++;
+	        	setButtonText(btnRed, Integer.toString(countRed));
+	        	Toast.makeText(getApplicationContext(), 
+	        			       setClickInfoText(getNow(), locStringFromLoc(currLocation), strAddr), 
+	        			       Toast.LENGTH_SHORT).show();
+	        	
+	    		// Create an entry and write to SD drive
+	    		String entry = createEntry(getNow(), "RED", currLocation, strAddr);
+	        	writeOnSD(lastList + ".txt", entry);
+	        }
+		});
+		*/
 		// Red button
 		final Button btnRed = (Button) findViewById(R.id.buttonRed); 
 		btnRed.getBackground().setColorFilter(Color.RED, Mode.MULTIPLY);
@@ -85,6 +123,7 @@ public class MainActivity extends Activity {
 	        public void onClick(View v) {
 	        	v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
 	        	String strAddr = getAddressFromLoc(currLocation);
+	        	sp.play(soundRed, 0.3f, 0.3f, 0, 0, 1);
 	        	//DataEntry testEntry = new DataEntry(getNow(), "RED", currLocation, strAddr);
 	        	countRed++;
 	        	setButtonText(btnRed, Integer.toString(countRed));
@@ -109,6 +148,7 @@ public class MainActivity extends Activity {
 						e.printStackTrace();
 					}
 				}
+				sp.play(soundRed, 0.3f, 0.3f, 0, 1, 1);
 				setButtonText(btnRed, Integer.toString(countRed));
 				return true;
 			}
@@ -126,6 +166,7 @@ public class MainActivity extends Activity {
 	        public void onClick(View v) {
 	        	v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
 	        	String strAddr = getAddressFromLoc(currLocation);
+	        	sp.play(soundGreen, 0.3f, 0.3f, 0, 0, 1);
 	        	countGreen++;
 	        	setButtonText(btnGreen, Integer.toString(countGreen));
 	        	Toast.makeText(getApplicationContext(), 
@@ -149,6 +190,7 @@ public class MainActivity extends Activity {
 						e.printStackTrace();
 					}
 				}
+				sp.play(soundGreen, 0.3f, 0.3f, 0, 1, 1);
 				setButtonText(btnGreen, Integer.toString(countGreen));
 				return true;
 			}
@@ -211,11 +253,22 @@ public class MainActivity extends Activity {
     	  String txtList = listat.getItemAtPosition(i).toString();
     	  Log.d("LIIKENNEVALOT", txtList);
     	  writeKMLFile(txtList + ".txt");
+    	  //writeNewSDFile(txtList + ".txt");
       }
       
       // Stop listening to location updates when app is closed
       mLocationManager.removeUpdates(mLocationListener);
 	}
+	
+	public void ringtone() {
+        try {
+            Uri notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            Ringtone r = RingtoneManager.getRingtone(getApplicationContext(), notification);
+            r.play();
+        } catch (Exception e) {
+        	
+        }
+    }
 	
 	// Get the index of the Spinner based on the string shown
 	private int getIndex(Spinner spinner, String myString) {
@@ -246,9 +299,11 @@ public class MainActivity extends Activity {
 	// Create one entry line to the logfile
 	private String createEntry(Time time, String button, Location loc, String addr) {
 		String strLoc = "NO_LOC,NO_LOC";
+		String geohash = "NO_GEOHASH";
 		
 		if (loc != null) {
 			strLoc = loc.getLatitude() + "," + loc.getLongitude();
+			geohash = GeoHashUtils.encode(loc.getLatitude(), loc.getLongitude()); 
 		}
 		String entry = String.format("%04d", time.year) + ","
 				     + String.format("%02d", time.month) + "," 
@@ -258,7 +313,8 @@ public class MainActivity extends Activity {
 					 + String.format("%02d", time.second) + ","
 					 + button + ","
 					 + strLoc + ","
-					 + addr;
+					 + addr + ","
+					 + geohash;
 		return entry;
 	}
 	
@@ -305,6 +361,8 @@ public class MainActivity extends Activity {
 				 + strAddr;
 		return entry;
 	}
+	
+	
 	
 	// Write the click details on SD card
 	public void writeOnSD(String sFileName, String sBody) {
@@ -400,6 +458,53 @@ public class MainActivity extends Activity {
 		}
 	}
 	
+	public void writeNewSDFile(String logFileName) {
+		String[] strTmp = logFileName.split("\\.");
+		String outFileName = strTmp[0] + "_new.txt";  // inputfile.txt -> inputfile -> inputfile_new.txt
+		Log.d("LIIKENNEVALOT", outFileName);
+		
+		if (!isExternalStorageWritable()) return;
+		
+		try {
+			File inputFile = new File(Environment.getExternalStorageDirectory(), logFileName);
+			if (!inputFile.isFile()) {
+				//Toast.makeText(getApplicationContext(), logFileName + " is not a valid text file", Toast.LENGTH_SHORT).show();
+				return;
+			}
+			File outFile = new File(Environment.getExternalStorageDirectory(), outFileName);
+			BufferedReader reader = new BufferedReader(new FileReader(inputFile));
+			BufferedWriter writer = new BufferedWriter(new FileWriter(outFile));
+			
+			String currentLine = null;
+			
+			while ((currentLine = reader.readLine()) != null) {
+				String[] txtParse = currentLine.split(",");
+				
+				double lat = -9999.9;
+				double lon = -9999.9;
+				
+				if (!(txtParse[7].contains("NO_LOC")) && !(txtParse[8].contains("NO_LOC"))) {
+					lat = Double.parseDouble(txtParse[7]);
+					lon = Double.parseDouble(txtParse[8]);
+				}
+				Log.d("LIIKENNEVALOT", lat + " " + lon);
+				
+				writer.write(currentLine);
+				if ((txtParse[7].contains("NO_LOC")) && (txtParse[8].contains("NO_LOC"))) {
+					writer.write(",NO_GEOHASH\n");
+				} else {
+					writer.write("," + GeoHashUtils.encode(lat, lon) + "\n");
+				}
+			}
+			
+			reader.close();
+			writer.close();
+			
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
 	// This method reads the logfile and creates a KML file for Google Earth
 	public void writeKMLFile(String logFileName)  {
 		
@@ -490,7 +595,6 @@ public class MainActivity extends Activity {
         	e.printStackTrace();
         }
     }
-	
 	
 	// This is an inner class for the location listener
 	public class MyLocationListener implements LocationListener {
