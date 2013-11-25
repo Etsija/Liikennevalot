@@ -8,6 +8,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.LineNumberReader;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -48,19 +49,24 @@ import android.graphics.PorterDuff.Mode;
 public class MainActivity extends Activity {
 
 	String lastList;
+	Area currArea = new Area();
 	int countRed;
 	int countGreen;
 	HashMap<String, String> prefKeys = new HashMap<String, String>();
-	Location currLocation;
+	Location currLocation = null;
 	static Geocoder geocoder;
 	LocationManager mLocationManager;
 	LocationListener mLocationListener;
+	DatabaseHelper db;
+	private static final double radius = 30.0;
+	Button btnIntersection;
+	List<Intersection> nearestIntersections = new ArrayList<Intersection>();
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
-		
+			
 		// Location services
 		mLocationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
 		mLocationListener = new MyLocationListener();
@@ -81,36 +87,70 @@ public class MainActivity extends Activity {
 		final Spinner listat = (Spinner) findViewById(R.id.listat);
 		listat.setSelection(getIndex(listat, lastList));
 		
+	    // SQLite:
+		// Loop through all items in the spinner and add a new area to SQLite table "area"
+		// if such an area name doesn't exist already  
+		db = new DatabaseHelper(getApplicationContext());
+		for (int i = 0; i < listat.getCount(); i++) {
+	    	String areaName = listat.getItemAtPosition(i).toString();
+	    	if (db.getArea(areaName).getName().contains("NOT_IN_DB")) {
+	    		Area newArea = new Area(areaName);
+	    		db.createArea(newArea);
+	    		Log.d("SQLITE", "New area added: " + db.getArea(areaName).toString());
+			}
+		}
+		
+		// Set current area based on what was last time selected
+		currArea = db.getArea(lastList);	
+		
 		// Fill the counters based on # RED and GREEN entries in logfile
 		countRed = countEntries(lastList + ".txt", "RED");
 		countGreen = countEntries(lastList + ".txt", "GREEN");
 		
 		// Blue button to add an intersection
-		final Button btnIntersection = (Button) findViewById(R.id.intersection);
+		btnIntersection = (Button) findViewById(R.id.intersection);
 		btnIntersection.getBackground().setColorFilter(Color.BLUE, Mode.MULTIPLY);
 		btnIntersection.setTextColor(Color.WHITE);
 		btnIntersection.setTextSize(20);
-		btnIntersection.setText("Lisää risteys");
-		/*
-		// Click: add a new intersection for this list
+		setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
+		if (currLocation == null)
+			btnIntersection.setEnabled(false);
+		
+		// Click: add a new intersection for this area
 		btnIntersection.setOnClickListener(new OnClickListener() {
 	        public void onClick(View v) {
+	        	String strAddr = "NO_ADDR";
 	        	v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-	        	String strAddr = getAddressFromLoc(currLocation);
-	        	sp.play(soundRed, 0.3f, 0.3f, 0, 0, 1);
-	        	//DataEntry testEntry = new DataEntry(getNow(), "RED", currLocation, strAddr);
-	        	countRed++;
-	        	setButtonText(btnRed, Integer.toString(countRed));
+	        	Log.d("SQLITE", currLocation.getLatitude() + "," + currLocation.getLongitude());
+	        	strAddr = getAddressFromLoc(currLocation);
+	        	
+	        	// Add a new record to intersection table
+	        	Intersection intersection = new Intersection();
+	        	intersection.setGeohash(GeoHashUtils.encode(currLocation.getLatitude(), currLocation.getLongitude()));
+	        	intersection.setLatitude(currLocation.getLatitude());
+	        	intersection.setLongitude(currLocation.getLongitude());
+	        	intersection.setRadius(radius);
+	        	intersection.setAddress(strAddr);
+	        	db.createIntersection(currArea, intersection);
+	        	sp.play(soundGreen, 0.3f, 0.3f, 0, 2, 1);
+	        	setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
 	        	Toast.makeText(getApplicationContext(), 
 	        			       setClickInfoText(getNow(), locStringFromLoc(currLocation), strAddr), 
 	        			       Toast.LENGTH_SHORT).show();
-	        	
-	    		// Create an entry and write to SD drive
-	    		String entry = createEntry(getNow(), "RED", currLocation, strAddr);
-	        	writeOnSD(lastList + ".txt", entry);
 	        }
 		});
-		*/
+		
+		// Longclick: delete newest intersection from this area
+		btnIntersection.setOnLongClickListener(new OnLongClickListener() {
+			public boolean onLongClick(View v) {
+				db.deleteNewestIntersectionFromArea(currArea);
+				sp.play(soundRed, 0.3f, 0.3f, 0, 1, 1);
+				setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
+				return true;
+			}
+		});
+		
+		
 		// Red button
 		final Button btnRed = (Button) findViewById(R.id.buttonRed); 
 		btnRed.getBackground().setColorFilter(Color.RED, Mode.MULTIPLY);
@@ -124,7 +164,6 @@ public class MainActivity extends Activity {
 	        	v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
 	        	String strAddr = getAddressFromLoc(currLocation);
 	        	sp.play(soundRed, 0.3f, 0.3f, 0, 0, 1);
-	        	//DataEntry testEntry = new DataEntry(getNow(), "RED", currLocation, strAddr);
 	        	countRed++;
 	        	setButtonText(btnRed, Integer.toString(countRed));
 	        	Toast.makeText(getApplicationContext(), 
@@ -201,9 +240,12 @@ public class MainActivity extends Activity {
 			public void onItemSelected(AdapterView<?> parent, View view, 
 		            int pos, long id) {
 		        lastList = parent.getItemAtPosition(pos).toString();
+				// Set current area based on what list item is selected
+				currArea = db.getArea(lastList);
 		        countRed = countEntries(lastList + ".txt", "RED");
 				countGreen = countEntries(lastList + ".txt", "GREEN");
-		        setButtonText(btnRed, Integer.toString(countRed));
+	        	setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
+				setButtonText(btnRed, Integer.toString(countRed));
 		        setButtonText(btnGreen, Integer.toString(countGreen));
 		    }
 
@@ -290,6 +332,7 @@ public class MainActivity extends Activity {
 	// Get the current time
 	private Time getNow() {
 		Time currTime = new Time();
+
 		currTime.setToNow();
 		// Months in Calendar class are 0-based!
 		currTime.month++;
@@ -348,7 +391,7 @@ public class MainActivity extends Activity {
 		}
 		return strAddress;
 	}
-	
+
 	// Format String to a timestamp
 	private String setClickInfoText(Time time, String strLoc, String strAddr) {
 		String entry = String.format("%02d", time.monthDay) + "."
@@ -596,14 +639,43 @@ public class MainActivity extends Activity {
         }
     }
 	
+	// Calculate the rounded distance to an intersection
+	public int calcDistance(Location location, Intersection intersection) {
+		double startLat = location.getLatitude();
+		double startLon = location.getLongitude();
+		double endLat = intersection.getLatitude();
+		double endLon = intersection.getLongitude();
+		int distance;
+		float[] results = new float[3];
+
+		Location.distanceBetween(startLat, startLon, endLat, endLon, results);
+		distance = Math.round(results[0]);
+
+		return distance;
+	}
+	
 	// This is an inner class for the location listener
 	public class MyLocationListener implements LocationListener {
 
 		@Override
 		public void onLocationChanged(Location loc) {
+			String strToast = "";
 			loc.getLatitude();
 			loc.getLongitude();
 			currLocation = loc;
+			if (currLocation != null) {
+				btnIntersection.setEnabled(true);
+				String geohash = GeoHashUtils.encode(currLocation.getLatitude(), currLocation.getLongitude());
+				nearestIntersections = db.getNearestIntersections(currArea, geohash, 7);
+				for (Intersection intersection : nearestIntersections) {
+					int distance = calcDistance(currLocation, intersection);
+					strToast += intersection.getGeohash() + " : " + distance + "\n";
+					Log.d("SQLITE", intersection.toString());
+				}
+				Toast.makeText(getApplicationContext(), strToast, Toast.LENGTH_SHORT).show();
+			} else {
+				btnIntersection.setEnabled(false);
+			}
 		}
 
 		@Override

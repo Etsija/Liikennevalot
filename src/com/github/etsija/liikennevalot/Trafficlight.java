@@ -1,12 +1,13 @@
 package com.github.etsija.liikennevalot;
 
-import android.text.format.Time;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public class Trafficlight {
 
-	int _id;				// PK
-	int _id_intersection;	// FK
-	Time _time;
+	long _id;				// PK
+	long _id_intersection;	// FK
+	Date _time;
 	String _light;
 	
 	// Constructors
@@ -14,12 +15,12 @@ public class Trafficlight {
 	public Trafficlight() {
 	}
 	
-	public Trafficlight(Time time, String light) {
+	public Trafficlight(Date time, String light) {
 		this._time = time;
 		this._light = light;
 	}
 	
-	public Trafficlight(int id, int id_intersection, Time time, String light) {
+	public Trafficlight(long id, long id_intersection, Date time, String light) {
 		this._id = id;
 		this._id_intersection = id_intersection;
 		this._time = time;
@@ -28,15 +29,15 @@ public class Trafficlight {
 	
 	// Setters
 	
-	public void setId(int id) {
+	public void setId(long id) {
 		this._id = id;
 	}
 	
-	public void setIdIntersection(int id_intersection) {
+	public void setIdIntersection(long id_intersection) {
 		this._id_intersection = id_intersection;
 	}
 	
-	public void setTime(Time time) {
+	public void setTime(Date time) {
 		this._time = time;
 	}
 	
@@ -46,15 +47,15 @@ public class Trafficlight {
 	
 	// Getters
 	
-	public int getId() {
+	public long getId() {
 		return this._id;
 	}
 	
-	public int getIdIntersection() {
+	public long getIdIntersection() {
 		return this._id_intersection;
 	}
 	
-	public Time getTime() {
+	public Date getTime() {
 		return this._time;
 	}
 	
@@ -64,20 +65,11 @@ public class Trafficlight {
 	
 	// Other methods
 	
-	public String timeToString() {
-		String strRet = String.format("%02d", _time.monthDay) + "."
-			          + String.format("%02d", _time.month) + "." 
-			          + String.format("%04d", _time.year) + " "
-				      + String.format("%02d", _time.hour) + ":" 
-				      + String.format("%02d", _time.minute) + ":"
-				      + String.format("%02d", _time.second);
-		return strRet;
-	}
-	
 	public String toString() {
-		String strRet = _id + ": "
-	                  + _id_intersection + " "
-	                  + timeToString() + " "
+		SimpleDateFormat formatter = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
+		String strRet = _id + " | "
+	                  + _id_intersection + " | "
+	                  + formatter.format(_time) + " | "
 	                  + _light;
 		return strRet;
 	}

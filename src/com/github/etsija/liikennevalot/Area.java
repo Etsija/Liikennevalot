@@ -1,8 +1,12 @@
 package com.github.etsija.liikennevalot;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
 public class Area {
 
-	int _id;		// PK
+	long _id;		// PK
+	Date _time;
 	String _name;
 	
 	// Constructors
@@ -14,15 +18,19 @@ public class Area {
 		this._name = name;
 	}
 	
-	public Area(int id, String name) {
+	public Area(long id, String name) {
 		this._id = id;
 		this._name = name;
 	}
 	
 	// Setters
 	
-	public void setId(int id) {
+	public void setId(long id) {
 		this._id = id;
+	}
+	
+	public void setTime(Date time) {
+		this._time = time;
 	}
 	
 	public void setName(String name) {
@@ -31,8 +39,12 @@ public class Area {
 	
 	// Getters
 	
-	public int getId() {
+	public long getId() {
 		return this._id;
+	}
+	
+	public Date getTime() {
+		return this._time;
 	}
 	
 	public String getName() {
@@ -42,7 +54,9 @@ public class Area {
 	// Other methods
 	
 	public String toString() {
-		String strRet = _id + ": " + _name;
+		SimpleDateFormat formatter = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");  
+		String strRet = _id + " | " + formatter.format(_time) + " | " 
+					  + _name;
 		return strRet;
 	}
 }

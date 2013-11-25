@@ -1,9 +1,13 @@
 package com.github.etsija.liikennevalot;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
 public class Intersection {
 
-	int _id;		// PK
-	int _id_area;	// FK
+	long _id;		// PK
+	long _id_area;	// FK
+	Date _time;
 	String _geohash;
 	double _latitude;
 	double _longitude;
@@ -19,7 +23,7 @@ public class Intersection {
 		this._geohash = geohash;
 	}
 	
-	public Intersection(int id, int id_area, String geohash, double latitude, double longitude, double radius, String address) {
+	public Intersection(long id, long id_area, String geohash, double latitude, double longitude, double radius, String address) {
 		this._id = id;
 		this._id_area = id_area;
 		this._geohash = geohash;
@@ -31,12 +35,16 @@ public class Intersection {
 	
 	// Setters
 	
-	public void setId(int id) {
+	public void setId(long id) {
 		this._id = id;
 	}
 	
-	public void setIdArea(int id_area) {
+	public void setIdArea(long id_area) {
 		this._id_area = id_area;
+	}
+	
+	public void setTime(Date time) {
+		this._time = time;
 	}
 	
 	public void setGeohash(String geohash) {
@@ -61,12 +69,16 @@ public class Intersection {
 	
 	// Getters
 	
-	public int getId() {
+	public long getId() {
 		return this._id;
 	}
 	
-	public int getIdArea() {
+	public long getIdArea() {
 		return this._id_area;
+	}
+	
+	public Date getTime() {
+		return this._time;
 	}
 	
 	public String getGeohash() {
@@ -92,12 +104,14 @@ public class Intersection {
 	// Other methods
 	
 	public String toString() {
-		String strRet = _id + ": "
-	                  + _id_area + " "
-	                  + _geohash + " "
-	                  + _address + " "
-	                  + _latitude + " "
-	                  + _longitude + " "
+		SimpleDateFormat formatter = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
+		String strRet = _id + " | "
+	                  + _id_area + " | "
+	                  + formatter.format(_time) + " | "
+	                  + _geohash + " | "
+	                  + _address + " | "
+	                  + _latitude + " | "
+	                  + _longitude + " | "
 	                  + _radius;
 		return strRet;
 	}
