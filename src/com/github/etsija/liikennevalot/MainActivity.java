@@ -9,12 +9,14 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.LineNumberReader;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Scanner;
 
 import org.jgeohash.GeoHashUtils;
+
+import com.github.etsija.liikennevalot.Vehicle.Status;
 
 import android.location.Address;
 import android.location.Geocoder;
@@ -22,15 +24,13 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioManager;
-import android.media.Ringtone;
-import android.media.RingtoneManager;
-import android.media.SoundPool;
-import android.net.Uri;
+import android.media.MediaPlayer;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
-import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.support.v4.app.FragmentActivity;
 import android.text.format.Time;
 import android.util.Log;
 import android.view.HapticFeedbackConstants;
@@ -41,50 +41,52 @@ import android.view.View.OnLongClickListener;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemSelectedListener;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.Toast;
 import android.graphics.Color;
 import android.graphics.PorterDuff.Mode;
 
-public class MainActivity extends Activity {
+public class MainActivity extends FragmentActivity {
 
 	String lastList;
 	Area currArea = new Area();
-	int countRed;
-	int countGreen;
-	HashMap<String, String> prefKeys = new HashMap<String, String>();
 	Location currLocation = null;
 	static Geocoder geocoder;
 	LocationManager mLocationManager;
 	LocationListener mLocationListener;
 	DatabaseHelper db;
 	private static final double radius = 30.0;
-	Button btnIntersection;
 	List<Intersection> nearestIntersections = new ArrayList<Intersection>();
+	Vehicle vehicle = new Vehicle();
+	MediaPlayer mp;
+	int soundGreen, soundRed;
+	
+	// UI elements
+	Spinner listat;
+	Button btnIntersection;
+	EditText txtStatus;
+	Button btnRed;
+	Button btnGreen;
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
-			
+		
 		// Location services
 		mLocationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
 		mLocationListener = new MyLocationListener();
 	    mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, mLocationListener);
-	    geocoder = new Geocoder(this, Locale.ENGLISH);  // For address search
+	    geocoder = new Geocoder(this, Locale.ENGLISH);  // For offline address search
 	    
-	    // Button sounds
-		final SoundPool sp = new SoundPool(5, AudioManager.STREAM_MUSIC, 0);
-		final int soundGreen = sp.load(this, R.raw.green, 1);
-		final int soundRed   = sp.load(this, R.raw.red, 1);
-		
 		// Fetch all preferences into prefKeys HashMap
 		final SharedPreferences settings = getPreferences(Context.MODE_PRIVATE);
 	    lastList = settings.getString("lastList", null);
 	    Log.d("LIIKENNEVALOT", "lastList = " + lastList);
 	    
 	    // Drop-down for the different lists
-		final Spinner listat = (Spinner) findViewById(R.id.listat);
+		listat = (Spinner) findViewById(R.id.listat);
 		listat.setSelection(getIndex(listat, lastList));
 		
 	    // SQLite:
@@ -103,11 +105,7 @@ public class MainActivity extends Activity {
 		// Set current area based on what was last time selected
 		currArea = db.getArea(lastList);	
 		
-		// Fill the counters based on # RED and GREEN entries in logfile
-		countRed = countEntries(lastList + ".txt", "RED");
-		countGreen = countEntries(lastList + ".txt", "GREEN");
-		
-		// Blue button to add an intersection
+		// BLUE BUTTON
 		btnIntersection = (Button) findViewById(R.id.intersection);
 		btnIntersection.getBackground().setColorFilter(Color.BLUE, Mode.MULTIPLY);
 		btnIntersection.setTextColor(Color.WHITE);
@@ -116,14 +114,95 @@ public class MainActivity extends Activity {
 		if (currLocation == null)
 			btnIntersection.setEnabled(false);
 		
-		// Click: add a new intersection for this area
+		// TEXTFIELD for showing intersection info
+		txtStatus = (EditText) findViewById(R.id.txtStatus);
+		txtStatus.getBackground().setColorFilter(Color.DKGRAY, Mode.MULTIPLY);
+		txtStatus.setTextColor(Color.WHITE);
+		txtStatus.setTextSize(14);
+		
+		// RED BUTTON
+		btnRed = (Button) findViewById(R.id.buttonRed); 
+		btnRed.getBackground().setColorFilter(Color.RED, Mode.MULTIPLY);
+		btnRed.setTextColor(Color.WHITE);
+		btnRed.setTextSize(20);
+		setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
+		if (currLocation == null)
+			btnRed.setEnabled(false);
+
+		// GREEN BUTTON
+		btnGreen = (Button) findViewById(R.id.buttonGreen); 
+		btnGreen.getBackground().setColorFilter(Color.GREEN, Mode.MULTIPLY);
+		btnGreen.setTextColor(Color.WHITE);
+		btnGreen.setTextSize(20);
+		setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
+		if (currLocation == null)
+			btnGreen.setEnabled(false);
+		
+		// Controlling audio volume
+		setVolumeControlStream(AudioManager.STREAM_MUSIC);
+		
+		// Try to solve the addresses in a background thread
+		new AsyncTask<Void, String, Void>() {
+			@Override
+		    // This runs on a separate thread, not the main UI thread!
+		    protected Void doInBackground(Void... params) {
+				List<Intersection> intersections = db.getIntersectionsWithInvalidAddress();
+				
+				if (intersections.size() == 0) return null;
+				setTitle("Invalid addresses in database: " + intersections.size());
+				
+				for (Intersection intersection : intersections) {
+					Location loc = new Location("foo");
+					loc.setLatitude(intersection.getLatitude());
+					loc.setLongitude(intersection.getLongitude());
+					
+					// Solve the address for this intersection (if possible)
+					String strAddr = getAddressFromLoc(loc);
+					// ...put it in the Intersection object
+					intersection.setAddress(strAddr);
+					// ...and return the object to the database
+					Log.d("SQLITE", intersection.toString());
+					db.updateIntersection(intersection);
+					publishProgress(strAddr);
+				}
+		        return null;
+		    }
+			
+			// Update the progress by showing briefly the found addresses on the titlebar
+		    protected void onProgressUpdate(String... progress) {
+		    	setTitle(progress[0]);
+		     }
+			
+		    @Override
+		    // this runs on main thread
+		    protected void onPostExecute(Void result) {
+		        //setTitle("All invalid addresses handled");
+		    }
+		}.execute();
+		
+		///////////////////////////////////////////////////////////////////////
+		// Listeners
+		///////////////////////////////////////////////////////////////////////
+		
+		// DROP-DOWN LIST: select the area
+		listat.setOnItemSelectedListener(new OnItemSelectedListener() {
+			public void onItemSelected(AdapterView<?> parent, View view, 
+		            int pos, long id) {
+		        lastList = parent.getItemAtPosition(pos).toString();
+				currArea = db.getArea(lastList);
+	        	setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
+	        	setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
+	        	setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
+		    }
+		    public void onNothingSelected(AdapterView<?> parent) {
+		    }
+		});
+		
+		// BLUE BUTTON: handle intersections
 		btnIntersection.setOnClickListener(new OnClickListener() {
 	        public void onClick(View v) {
 	        	String strAddr = "NO_ADDR";
 	        	v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-	        	Log.d("SQLITE", currLocation.getLatitude() + "," + currLocation.getLongitude());
-	        	strAddr = getAddressFromLoc(currLocation);
-	        	
 	        	// Add a new record to intersection table
 	        	Intersection intersection = new Intersection();
 	        	intersection.setGeohash(GeoHashUtils.encode(currLocation.getLatitude(), currLocation.getLongitude()));
@@ -132,126 +211,83 @@ public class MainActivity extends Activity {
 	        	intersection.setRadius(radius);
 	        	intersection.setAddress(strAddr);
 	        	db.createIntersection(currArea, intersection);
-	        	sp.play(soundGreen, 0.3f, 0.3f, 0, 2, 1);
+	        	playSound("intersection_click");
 	        	setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
 	        	Toast.makeText(getApplicationContext(), 
-	        			       setClickInfoText(getNow(), locStringFromLoc(currLocation), strAddr), 
+	        			       setClickInfoText(getNow(), locStringFromLoc(currLocation)), 
 	        			       Toast.LENGTH_SHORT).show();
 	        }
 		});
 		
-		// Longclick: delete newest intersection from this area
 		btnIntersection.setOnLongClickListener(new OnLongClickListener() {
 			public boolean onLongClick(View v) {
 				db.deleteNewestIntersectionFromArea(currArea);
-				sp.play(soundRed, 0.3f, 0.3f, 0, 1, 1);
+				playSound("intersection_doubleclick");
 				setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
 				return true;
 			}
 		});
 		
-		
-		// Red button
-		final Button btnRed = (Button) findViewById(R.id.buttonRed); 
-		btnRed.getBackground().setColorFilter(Color.RED, Mode.MULTIPLY);
-		btnRed.setTextColor(Color.WHITE);
-		btnRed.setTextSize(20);
-		setButtonText(btnRed, Integer.toString(countRed));
-		
-		// Click: increase RED counter by one and show new value in button
+		// RED BUTTON
 		btnRed.setOnClickListener(new OnClickListener() {
 	        public void onClick(View v) {
 	        	v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-	        	String strAddr = getAddressFromLoc(currLocation);
-	        	sp.play(soundRed, 0.3f, 0.3f, 0, 0, 1);
-	        	countRed++;
-	        	setButtonText(btnRed, Integer.toString(countRed));
-	        	Toast.makeText(getApplicationContext(), 
-	        			       setClickInfoText(getNow(), locStringFromLoc(currLocation), strAddr), 
-	        			       Toast.LENGTH_SHORT).show();
 	        	
-	    		// Create an entry and write to SD drive
-	    		String entry = createEntry(getNow(), "RED", currLocation, strAddr);
-	        	writeOnSD(lastList + ".txt", entry);
+	        	// Create a new RED trafficlight record
+	        	Trafficlight trafficlight = new Trafficlight();
+	        	trafficlight.setIdIntersection(vehicle.getIntersectionId());
+	        	trafficlight.setGeohash(GeoHashUtils.encode(currLocation.getLatitude(), currLocation.getLongitude()));
+	        	trafficlight.setLatitude(currLocation.getLatitude());
+	        	trafficlight.setLongitude(currLocation.getLongitude());
+	        	trafficlight.setLight("RED");
+	        	db.createTrafficlight(trafficlight);
+	        	
+	        	playSound("red_click");
+	        	setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
+	        	Toast.makeText(getApplicationContext(), 
+	        			       setClickInfoText(getNow(), locStringFromLoc(currLocation)), 
+	        			       Toast.LENGTH_SHORT).show();
 	        }
 		});
 		
-		// Longclick: decrease RED counter by one
 		btnRed.setOnLongClickListener(new OnLongClickListener() {
 			public boolean onLongClick(View v) {
-				if (countRed > 0) {
-					countRed--;
-					try {
-						deleteLastLine(lastList + ".txt", countLines(lastList + ".txt"));
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
-				}
-				sp.play(soundRed, 0.3f, 0.3f, 0, 1, 1);
-				setButtonText(btnRed, Integer.toString(countRed));
+				db.deleteNewestTrafficlightFromArea(currArea, "RED");
+				playSound("red_doubleclick");
+				setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
 				return true;
 			}
 		});
-
-		// Green button
-		final Button btnGreen = (Button) findViewById(R.id.buttonGreen); 
-		btnGreen.getBackground().setColorFilter(Color.GREEN, Mode.MULTIPLY);
-		btnGreen.setTextColor(Color.WHITE);
-		btnGreen.setTextSize(20);
-		setButtonText(btnGreen, Integer.toString(countGreen));
 		
-		// Click: increase GREEN counter by one and show new value in button
+		// GREEN BUTTON
 		btnGreen.setOnClickListener(new OnClickListener() {
 	        public void onClick(View v) {
 	        	v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-	        	String strAddr = getAddressFromLoc(currLocation);
-	        	sp.play(soundGreen, 0.3f, 0.3f, 0, 0, 1);
-	        	countGreen++;
-	        	setButtonText(btnGreen, Integer.toString(countGreen));
-	        	Toast.makeText(getApplicationContext(), 
-	        			       setClickInfoText(getNow(), locStringFromLoc(currLocation), strAddr),
-	        			       Toast.LENGTH_SHORT).show();
 	        	
-	    		// Create an entry and write to SD drive
-	    		String entry = createEntry(getNow(), "GREEN", currLocation, strAddr);
-	        	writeOnSD(lastList + ".txt", entry);
+	        	// Create a new GREEN trafficlight record
+	        	Trafficlight trafficlight = new Trafficlight();
+	        	trafficlight.setIdIntersection(vehicle.getIntersectionId());
+	        	trafficlight.setGeohash(GeoHashUtils.encode(currLocation.getLatitude(), currLocation.getLongitude()));
+	        	trafficlight.setLatitude(currLocation.getLatitude());
+	        	trafficlight.setLongitude(currLocation.getLongitude());
+	        	trafficlight.setLight("GREEN");
+	        	db.createTrafficlight(trafficlight);
+	        	
+	        	playSound("green_click");
+	        	setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
+	        	Toast.makeText(getApplicationContext(), 
+	        			       setClickInfoText(getNow(), locStringFromLoc(currLocation)),
+	        			       Toast.LENGTH_SHORT).show();
 	        }
 		});
 		
-		// Longclick: decrease GREEN counter by one
 		btnGreen.setOnLongClickListener(new OnLongClickListener() {
 			public boolean onLongClick(View v) {
-				if (countGreen > 0) {
-					countGreen--;
-					try {
-						deleteLastLine(lastList + ".txt", countLines(lastList + ".txt"));
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
-				}
-				sp.play(soundGreen, 0.3f, 0.3f, 0, 1, 1);
-				setButtonText(btnGreen, Integer.toString(countGreen));
+				db.deleteNewestTrafficlightFromArea(currArea, "GREEN");
+				playSound("green_doubleclick");
+				setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
 				return true;
 			}
-		});
-		
-		// Handles the menu change (into a different list)
-		listat.setOnItemSelectedListener(new OnItemSelectedListener() {
-			public void onItemSelected(AdapterView<?> parent, View view, 
-		            int pos, long id) {
-		        lastList = parent.getItemAtPosition(pos).toString();
-				// Set current area based on what list item is selected
-				currArea = db.getArea(lastList);
-		        countRed = countEntries(lastList + ".txt", "RED");
-				countGreen = countEntries(lastList + ".txt", "GREEN");
-	        	setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
-				setButtonText(btnRed, Integer.toString(countRed));
-		        setButtonText(btnGreen, Integer.toString(countGreen));
-		    }
-
-		    public void onNothingSelected(AdapterView<?> parent) {
-		        // Another interface callback
-		    }
 		});
 	}
 
@@ -276,46 +312,38 @@ public class MainActivity extends Activity {
 	
 	@Override
     protected void onStop(){
-       super.onStop();
+		super.onStop();
 
-      // We need an Editor object to make preference changes.
-      // All objects are from android.context.Context
-      SharedPreferences settings = getPreferences(Context.MODE_PRIVATE);
-      SharedPreferences.Editor editor = settings.edit();
+		// We need an Editor object to make preference changes.
+		// All objects are from android.context.Context
+		SharedPreferences settings = getPreferences(Context.MODE_PRIVATE);
+		SharedPreferences.Editor editor = settings.edit();
       
-      // Save the lastly used list into preferences
-      editor.putString("lastList", lastList);
+		// Save the lastly used list into preferences
+		editor.putString("lastList", lastList);
       
-      // Commit the edits!
-      editor.commit();
+		// Commit the edits!
+		editor.commit();
       
-      // Write the KML files for all lists
-      final Spinner listat = (Spinner) findViewById(R.id.listat);
-      for (int i = 0; i < listat.getCount(); i++) {
-    	  String txtList = listat.getItemAtPosition(i).toString();
-    	  Log.d("LIIKENNEVALOT", txtList);
-    	  writeKMLFile(txtList + ".txt");
-    	  //writeNewSDFile(txtList + ".txt");
-      }
+		// Write the KML files for all lists
+		final Spinner listat = (Spinner) findViewById(R.id.listat);
+		for (int i = 0; i < listat.getCount(); i++) {
+			String txtList = listat.getItemAtPosition(i).toString();
+			Log.d("LIIKENNEVALOT", txtList);
+			writeKMLFile(txtList + ".txt");
+		}
       
-      // Stop listening to location updates when app is closed
-      mLocationManager.removeUpdates(mLocationListener);
+		// Stop listening to location updates when app is closed
+		mLocationManager.removeUpdates(mLocationListener);
 	}
 	
-	public void ringtone() {
-        try {
-            Uri notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-            Ringtone r = RingtoneManager.getRingtone(getApplicationContext(), notification);
-            r.play();
-        } catch (Exception e) {
-        	
-        }
-    }
+	///////////////////////////////////////////////////////////////////////////
+	// Helper methods
+	///////////////////////////////////////////////////////////////////////////
 	
 	// Get the index of the Spinner based on the string shown
 	private int getIndex(Spinner spinner, String myString) {
 		int index = 0;
-
 		for (int i = 0; i < spinner.getCount(); i++) {
 			if (spinner.getItemAtPosition(i).toString().equalsIgnoreCase(myString)) {
 				index = i;
@@ -332,7 +360,6 @@ public class MainActivity extends Activity {
 	// Get the current time
 	private Time getNow() {
 		Time currTime = new Time();
-
 		currTime.setToNow();
 		// Months in Calendar class are 0-based!
 		currTime.month++;
@@ -385,7 +412,6 @@ public class MainActivity extends Activity {
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
-				Log.e("LIIKENNEVALOT", e.toString());
 				strAddress = "ADDR_SERVICE_NOT_AVAILABLE";
 			}
 		}
@@ -393,19 +419,16 @@ public class MainActivity extends Activity {
 	}
 
 	// Format String to a timestamp
-	private String setClickInfoText(Time time, String strLoc, String strAddr) {
+	private String setClickInfoText(Time time, String strLoc) {
 		String entry = String.format("%02d", time.monthDay) + "."
 			     + String.format("%02d", time.month) + "." 
 			     + String.format("%04d", time.year) + " "
 				 + String.format("%02d", time.hour) + ":" 
 				 + String.format("%02d", time.minute) + ":"
 				 + String.format("%02d", time.second) + "\n"
-				 + strLoc + "\n"
-				 + strAddr;
+				 + strLoc;
 		return entry;
 	}
-	
-	
 	
 	// Write the click details on SD card
 	public void writeOnSD(String sFileName, String sBody) {
@@ -464,13 +487,11 @@ public class MainActivity extends Activity {
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		}
-		
 		return nLines;
 	}
 	
 	// Delete last line from logfile
 	public void deleteLastLine(String fileName, int nLines) {
-		
 		try {	
 			File inputFile = new File(Environment.getExternalStorageDirectory(), fileName);
 			if (!inputFile.isFile()) {
@@ -539,10 +560,8 @@ public class MainActivity extends Activity {
 					writer.write("," + GeoHashUtils.encode(lat, lon) + "\n");
 				}
 			}
-			
 			reader.close();
-			writer.close();
-			
+			writer.close();	
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -639,40 +658,183 @@ public class MainActivity extends Activity {
         }
     }
 	
-	// Calculate the rounded distance to an intersection
-	public int calcDistance(Location location, Intersection intersection) {
-		double startLat = location.getLatitude();
-		double startLon = location.getLongitude();
-		double endLat = intersection.getLatitude();
-		double endLon = intersection.getLongitude();
-		int distance;
-		float[] results = new float[3];
-
-		Location.distanceBetween(startLat, startLon, endLat, endLon, results);
-		distance = Math.round(results[0]);
-
-		return distance;
-	}
+	// This method handles playing of the sounds in different situations
+    protected void playSound(String sound) {
+        if (mp != null) {
+            mp.reset();
+            mp.release();
+        }
+        if (sound == "enter_intersection")
+            mp = MediaPlayer.create(this, R.raw.enter_intersection);
+        else if (sound == "exit_intersection")
+            mp = MediaPlayer.create(this, R.raw.exit_intersection);
+        else if (sound == "intersection_click")
+            mp = MediaPlayer.create(this, R.raw.intersection_click);
+        else if (sound == "intersection_doubleclick")
+            mp = MediaPlayer.create(this, R.raw.intersection_doubleclick);
+        else if (sound == "red_click")
+            mp = MediaPlayer.create(this, R.raw.red_click);
+        else if (sound == "red_doubleclick")
+            mp = MediaPlayer.create(this, R.raw.red_doubleclick);
+        else if (sound == "green_click")
+            mp = MediaPlayer.create(this, R.raw.green_click);
+        else if (sound == "green_doubleclick")
+            mp = MediaPlayer.create(this, R.raw.green_doubleclick);
+        
+        mp.setVolume(1.0f, 1.0f);
+        mp.start();
+    }
 	
+    // This method reads the logfile and inserts trafficlight events from it to the "trafficlight" SQLite table
+    @SuppressWarnings("deprecation")
+	public void moveToDb(String logFileName) {
+		
+		if (!isExternalStorageWritable()) return;
+		
+		try {
+			File inputFile = new File(Environment.getExternalStorageDirectory(), logFileName);
+			if (!inputFile.isFile()) {
+				Toast.makeText(getApplicationContext(), logFileName + " is not a valid text file", Toast.LENGTH_SHORT).show();
+				return;
+			}
+			BufferedReader reader = new BufferedReader(new FileReader(inputFile));
+			
+			String currentLine = null;
+			
+			while ((currentLine = reader.readLine()) != null) {
+				String[] txtParse = currentLine.split(",");
+				
+				String year    = txtParse[0];
+				String month   = txtParse[1];
+				String day     = txtParse[2];
+				String hour    = txtParse[3];
+				String minute  = txtParse[4];
+				String second  = txtParse[5];
+				String light   = txtParse[6];
+				String txtLat  = txtParse[7];
+				String txtLon  = txtParse[8];
+				String geohash = txtParse[10];
+				
+				// Set basic data
+				
+				Date date = new Date();
+				date.setYear(Integer.parseInt(year)-1900);
+				date.setMonth(Integer.parseInt(month)-1);
+				date.setDate(Integer.parseInt(day));
+				date.setHours(Integer.parseInt(hour));
+				date.setMinutes(Integer.parseInt(minute));
+				date.setSeconds(Integer.parseInt(second));
+				
+				double latitude = Double.parseDouble(txtLat);
+				double longitude = Double.parseDouble(txtLon);
+				
+				Trafficlight trafficlight = new Trafficlight(date, light);
+				trafficlight.setLatitude(latitude);
+				trafficlight.setLongitude(longitude);
+				trafficlight.setGeohash(geohash);
+				
+				Log.d("SQLITE", trafficlight.toString());
+				db.createTrafficlight(trafficlight);
+			}
+			reader.close();	
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+    
 	// This is an inner class for the location listener
 	public class MyLocationListener implements LocationListener {
 
 		@Override
 		public void onLocationChanged(Location loc) {
-			String strToast = "";
+			String strOutside = "";
+			String strIntersection = "";
 			loc.getLatitude();
 			loc.getLongitude();
+			
 			currLocation = loc;
 			if (currLocation != null) {
+				// Update coordinates of the Vehicle object (representing my vehicle)
+				vehicle.setLatitude(currLocation.getLatitude());
+				vehicle.setLongitude(currLocation.getLongitude());
+
 				btnIntersection.setEnabled(true);
 				String geohash = GeoHashUtils.encode(currLocation.getLatitude(), currLocation.getLongitude());
 				nearestIntersections = db.getNearestIntersections(currArea, geohash, 7);
+				
+				// Loop through all intersections near the user
 				for (Intersection intersection : nearestIntersections) {
-					int distance = calcDistance(currLocation, intersection);
-					strToast += intersection.getGeohash() + " : " + distance + "\n";
-					Log.d("SQLITE", intersection.toString());
+
+					vehicle.setDistance(intersection);
+					strOutside += (int)vehicle.getDistance() + " : " + intersection.getAddress() + "\n";
+					
+					// State transition: OUTSIDE_INTERSECTION -> ENTER_INTERSECTION
+					if ((vehicle.status == Status.OUTSIDE_INTERSECTION) && 
+						(vehicle.getDistance() <= radius)) {
+						playSound("enter_intersection");
+						setButtonText(btnRed, Integer.toString(db.getLightsOfIntersection(intersection, "RED")));
+						setButtonText(btnGreen, Integer.toString(db.getLightsOfIntersection(intersection, "GREEN")));
+						vehicle.setIntersectionId(intersection.getId());
+						vehicle.status = Status.ENTER_INTERSECTION;
+						strIntersection = "ENTER INTERSECTION\n" 
+								  	    + (int)vehicle.getDistance() + " : " + intersection.getAddress();
+
+					// State transition: ENTER_INTERSECTION -> AT_INTERSECTION
+					} else if ((vehicle.status == Status.ENTER_INTERSECTION) && 
+							   (vehicle.getDistance() <= radius) &&
+							   (vehicle.getIntersectionId() == intersection.getId())) {
+						vehicle.status = Status.AT_INTERSECTION;
+						strIntersection = "AT INTERSECTION\n" 
+										+ (int)vehicle.getDistance() + " : " + intersection.getAddress();
+
+					// State transition: AT_INTERSECTION -> AT_INTERSECTION (self-loop)
+					} else if ((vehicle.status == Status.AT_INTERSECTION) &&
+							   (vehicle.getDistance() <= radius) &&
+							   (vehicle.getIntersectionId() == intersection.getId())) {
+						vehicle.status = Status.AT_INTERSECTION;
+						strIntersection = "AT INTERSECTION\n" 
+										+ (int)vehicle.getDistance() + " : " + intersection.getAddress();
+
+					// State transition: AT_INTERSECTION -> EXIT_INTERSECTION
+					} else if ((vehicle.status == Status.AT_INTERSECTION) &&
+							   (vehicle.getDistance() >= radius) &&
+							   (vehicle.getIntersectionId() == intersection.getId())) {
+						playSound("exit_intersection");
+						setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
+						setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
+						vehicle.status = Status.EXIT_INTERSECTION;
+						strIntersection = "EXIT INTERSECTION\n" 
+								  		+ (int)vehicle.getDistance() + " : " + intersection.getAddress();
+
+					// State transition: EXIT_INTERSECTION -> OUTSIDE_INTERSECTION
+					} else if ((vehicle.status == Status.EXIT_INTERSECTION) &&
+							   (vehicle.getDistance() >= radius) &&
+							   (vehicle.getIntersectionId() == intersection.getId())) {
+						vehicle.setIntersectionId(-1);
+						vehicle.status = Status.OUTSIDE_INTERSECTION;
+					}						
 				}
-				Toast.makeText(getApplicationContext(), strToast, Toast.LENGTH_SHORT).show();
+				
+				// When not in intersection:
+				// - display info about nearby intersections
+				// - enable intersection add button
+				// - disable the trafficlight buttons
+				if (vehicle.status == Status.OUTSIDE_INTERSECTION) {
+					txtStatus.setText(strOutside);
+					btnIntersection.setEnabled(true);
+					btnRed.setEnabled(false);
+					btnGreen.setEnabled(false);
+					
+				// When in intersection:
+				// - display info about this intersection
+				// - disable intersection add button
+				// - enable the trafficlight buttons
+				} else { 
+					txtStatus.setText(strIntersection);
+					btnIntersection.setEnabled(false);
+					btnRed.setEnabled(true);
+					btnGreen.setEnabled(true);
+				}
 			} else {
 				btnIntersection.setEnabled(false);
 			}
@@ -690,7 +852,6 @@ public class MainActivity extends Activity {
 	
 		@Override
 		public void onStatusChanged(String provider, int status, Bundle extras) {
-		
 		}
 	}
 }

@@ -3,6 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
+    android:keepScreenOn="true"
     tools:context=".MainActivity" >
 
     <Spinner
@@ -16,8 +17,8 @@
     <Button 
         android:id="@+id/intersection"
         android:layout_width="100dp"
-        android:layout_height="70dp"
-        android:layout_centerHorizontal="true" 
+        android:layout_height="80dp"
+        android:layout_centerHorizontal="false" 
         android:layout_below="@+id/listat" />
     
     <Button
@@ -32,5 +33,20 @@
         android:layout_width="match_parent"
         android:layout_height="130dp"
         android:layout_alignParentBottom="true" />
+
+    <EditText
+        android:id="@+id/txtStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignBottom="@+id/intersection"
+        android:layout_below="@+id/listat"
+        android:layout_marginLeft="10dp"
+        android:layout_toRightOf="@+id/intersection"
+        android:inputType="textMultiLine"
+        android:clickable="false" 
+        android:cursorVisible="false" 
+        android:focusable="false" 
+        android:focusableInTouchMode="false" >
+    </EditText>
        
 </RelativeLayout>
