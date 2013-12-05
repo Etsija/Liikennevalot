@@ -3,6 +3,8 @@ package com.github.etsija.liikennevalot;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
+import android.text.format.Time;
+
 public class Intersection {
 
 	long _id;		// PK
@@ -23,8 +25,7 @@ public class Intersection {
 		this._geohash = geohash;
 	}
 	
-	public Intersection(long id, long id_area, String geohash, double latitude, double longitude, double radius, String address) {
-		this._id = id;
+	public Intersection(long id_area, String geohash, double latitude, double longitude, double radius, String address) {
 		this._id_area = id_area;
 		this._geohash = geohash;
 		this._latitude = latitude;
@@ -45,6 +46,19 @@ public class Intersection {
 	
 	public void setTime(Date time) {
 		this._time = time;
+	}
+	
+	@SuppressWarnings("deprecation")
+	public void setTime(Time time) {
+		Date date = new Date();
+		date.setYear(time.year-1900);
+		date.setMonth(time.month-1);
+		date.setDate(time.monthDay);
+		date.setHours(time.hour);
+		date.setMinutes(time.minute);
+		date.setSeconds(time.second);
+		
+		setTime(date);
 	}
 	
 	public void setGeohash(String geohash) {
@@ -107,7 +121,7 @@ public class Intersection {
 		SimpleDateFormat formatter = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
 		String strRet = _id + " | "
 	                  + _id_area + " | "
-	                  + formatter.format(_time) + " | "
+	                  //+ formatter.format(_time) + " | "
 	                  + _geohash + " | "
 	                  + _address + " | "
 	                  + _latitude + " | "

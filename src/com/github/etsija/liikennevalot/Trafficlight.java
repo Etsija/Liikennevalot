@@ -23,11 +23,9 @@ public class Trafficlight {
 		this._light = light;
 	}
 	
-	public Trafficlight(long id, long id_intersection, Date time, String geohash, 
+	public Trafficlight(long id_intersection, String geohash, 
 						double latitude, double longitude, String light) {
-		this._id = id;
 		this._id_intersection = id_intersection;
-		this._time = time;
 		this._geohash = geohash;
 		this._latitude = latitude;
 		this._longitude = longitude;

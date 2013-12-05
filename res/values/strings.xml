@@ -2,7 +2,6 @@
 <resources>
 
     <string name="app_name">Liikennevalot</string>
-    <string name="action_settings">Settings</string>
     
     <string-array name="listat_nimet">
         <item>Kuopio</item>

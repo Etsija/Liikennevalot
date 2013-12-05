@@ -6,10 +6,14 @@ public class Vehicle {
 
 	private double  _latitude;
 	private double  _longitude;
+	private float   _speed;
 	private long    _id_intersection;
 	private double  _oldDistance;
 	private double  _distance;
 	private boolean _enterIntersection, _insideIntersection, _exitIntersection;
+	private int     _stopCount;
+	private boolean _isStanding;
+	int nStopped;
 	Status status;
 	
 	public enum Status { OUTSIDE_INTERSECTION, ENTER_INTERSECTION, AT_INTERSECTION,	EXIT_INTERSECTION }
@@ -20,18 +24,25 @@ public class Vehicle {
 		this._enterIntersection = false;
 		this._insideIntersection = false;
 		this._exitIntersection = false;
+		this._stopCount = 0;
+		this._isStanding = false;
 		this.status = Status.OUTSIDE_INTERSECTION;
+		this.nStopped = 0;
 	}
 	
 	public Vehicle(Location location) {
 		this._latitude = location.getLatitude();
 		this._longitude = location.getLongitude();
+		this._speed = location.getSpeed() * 3.6f;
 		this._id_intersection = -1;
 		this._oldDistance = 3000.0;
 		this._enterIntersection = false;
 		this._insideIntersection = false;
 		this._exitIntersection = false;
+		this._stopCount = 0;
+		this._isStanding = false;
 		this.status = Status.OUTSIDE_INTERSECTION;
+		this.nStopped = 0;
 	}
 
 	// Setters
@@ -42,6 +53,10 @@ public class Vehicle {
 	
 	public void setLongitude(double longitude) {
 		this._longitude = longitude;
+	}
+	
+	public void setSpeed(float speed) {
+		this._speed = speed * 3.6f;
 	}
 	
 	public void setIntersectionId(long intersectionId) {
@@ -91,6 +106,10 @@ public class Vehicle {
 		return this._longitude;
 	}
 	
+	public float getSpeed() {
+		return this._speed;
+	}
+	
 	public long getIntersectionId() {
 		return this._id_intersection;
 	}
@@ -121,9 +140,26 @@ public class Vehicle {
 	public String toString() {
 		String strRet = _latitude + " | "
 	                  + _longitude + " | "
+	                  + _speed + " | "
 	                  + _oldDistance + " | "
 	                  + _distance + " | "
 	                  + status;
 		return strRet;
+	}
+	
+	// Has the vehicle been standing still for more than 5 seconds?
+	public boolean checkStop() {
+		if (getSpeed() < 2) {
+			_stopCount++;
+			if (_stopCount > 4) {
+				_stopCount = 0;
+				_isStanding = true;
+				nStopped++;
+			}
+		} else {
+			_stopCount = 0;
+			_isStanding = false;
+		}
+		return _isStanding;
 	}
 }

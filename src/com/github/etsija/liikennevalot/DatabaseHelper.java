@@ -84,6 +84,16 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 		// Create new ones
 		onCreate(db);
 	}
+	
+	@Override
+	public void onOpen(SQLiteDatabase db) {
+	    super.onOpen(db);
+	    if (!db.isReadOnly()) {
+	        // Enable foreign key constraints.
+	    	// This is needed for "ON DELETE CASCADE" support!
+	        db.execSQL("PRAGMA foreign_keys=ON;");
+	    }
+	}
 
 	///////////////////////////////////////////////////////////////////////////
 	// CRUD operations
@@ -612,11 +622,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 	}
 	
 	// Get trafficlight counts of an intersection
-	public int getLightsOfIntersection(Intersection intersection, String light) {
+	public int getLightsOfIntersection(long id_intersection, String light) {
 		SQLiteDatabase db = this.getReadableDatabase();
 		
 		String sqlQuery = "SELECT * FROM trafficlight "
-				        + "WHERE id_intersection = " + intersection.getId() + " "
+				        + "WHERE id_intersection = " + id_intersection + " "
 				        + "AND light = '" + light + "'";
 		Cursor c = db.rawQuery(sqlQuery, null);
 		return c.getCount();

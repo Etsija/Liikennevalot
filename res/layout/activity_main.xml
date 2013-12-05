@@ -10,22 +10,15 @@
         android:id="@+id/listat"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="20dp"
+        android:layout_marginBottom="10dp"
         android:layout_alignParentTop="true"
         android:entries="@array/listat_nimet" />
-    
-    <Button 
-        android:id="@+id/intersection"
-        android:layout_width="100dp"
-        android:layout_height="80dp"
-        android:layout_centerHorizontal="false" 
-        android:layout_below="@+id/listat" />
     
     <Button
         android:id="@+id/buttonRed"
         android:layout_width="match_parent"
         android:layout_height="130dp"
-        android:layout_marginBottom="20dp"
+        android:layout_marginBottom="10dp"
         android:layout_above="@+id/buttonGreen" />
 
     <Button
@@ -34,7 +27,14 @@
         android:layout_height="130dp"
         android:layout_alignParentBottom="true" />
 
-    <EditText
+    <Button 
+        android:id="@+id/intersection"
+        android:layout_width="110dp"
+        android:layout_height="130dp"
+        android:layout_centerHorizontal="false" 
+        android:layout_below="@+id/listat" />
+        
+    <TextView
         android:id="@+id/txtStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -42,11 +42,9 @@
         android:layout_below="@+id/listat"
         android:layout_marginLeft="10dp"
         android:layout_toRightOf="@+id/intersection"
-        android:inputType="textMultiLine"
-        android:clickable="false" 
-        android:cursorVisible="false" 
+        android:gravity="center_vertical|left"
         android:focusable="false" 
         android:focusableInTouchMode="false" >
-    </EditText>
+    </TextView>
        
 </RelativeLayout>
