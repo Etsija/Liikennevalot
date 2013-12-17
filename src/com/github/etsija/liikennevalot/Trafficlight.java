@@ -12,6 +12,7 @@ public class Trafficlight {
 	double _latitude;
 	double _longitude;
 	String _light;
+	int    _waitingTime;
 	
 	// Constructors
 	
@@ -24,12 +25,13 @@ public class Trafficlight {
 	}
 	
 	public Trafficlight(long id_intersection, String geohash, 
-						double latitude, double longitude, String light) {
+						double latitude, double longitude, String light, int waitingTime) {
 		this._id_intersection = id_intersection;
 		this._geohash = geohash;
 		this._latitude = latitude;
 		this._longitude = longitude;
 		this._light = light;
+		this._waitingTime = waitingTime;
 	}
 	
 	// Setters
@@ -62,6 +64,10 @@ public class Trafficlight {
 		this._light = light;
 	}
 	
+	public void setWaitingTime(int waitingTime) {
+		this._waitingTime = waitingTime;
+	}
+	
 	// Getters
 	
 	public long getId() {
@@ -92,6 +98,10 @@ public class Trafficlight {
 		return this._light;
 	}
 	
+	public int getWaitingTime() {
+		return this._waitingTime;
+	}
+	
 	// Other methods
 	
 	public String toString() {
@@ -102,7 +112,8 @@ public class Trafficlight {
 	                  + _geohash + " | "
 	                  + _latitude + " | "
 	                  + _longitude + " | "
-	                  + _light;
+	                  + _light + " | "
+	                  + _waitingTime;
 		return strRet;
 	}
 }

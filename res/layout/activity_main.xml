@@ -33,7 +33,8 @@
         android:layout_height="130dp"
         android:layout_centerHorizontal="false" 
         android:layout_below="@+id/listat" />
-        
+    
+    <!--
     <TextView
         android:id="@+id/txtStatus"
         android:layout_width="match_parent"
@@ -46,5 +47,88 @@
         android:focusable="false" 
         android:focusableInTouchMode="false" >
     </TextView>
+    -->
+    
+    <RelativeLayout 
+        android:id="@+id/layoutStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FF444444" 
+        android:layout_alignBottom="@+id/intersection"
+        android:layout_below="@+id/listat"
+        android:layout_marginLeft="10dp"
+        android:layout_toRightOf="@+id/intersection" >
+
+        <TextView
+            android:id="@+id/txtStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_centerHorizontal="true"
+            android:layout_marginBottom="2dp"
+            android:textSize="14sp"
+            android:textColor="#FFFFFFFF"
+            android:background="#FF444444" />
+
+        <View style="@style/Divider"
+            android:layout_below="@+id/txtStatus" />
+    
+        <TextView
+            android:id="@+id/txtSpeed"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentLeft="true"
+            android:textSize="14sp"
+            android:textColor="#FFFFFFFF"
+            android:background="#FF444444" />
+
+        <View style="@style/Divider"
+            android:layout_below="@+id/txtIntersections" />
+    
+        <TextView
+            android:id="@+id/txtSpeedCaption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_above="@+id/txtSpeed"
+            android:layout_alignParentLeft="true"
+            android:layout_marginTop="2dp"
+            android:textSize="14sp"
+            android:textColor="#FFFFFFFF"
+            android:background="#FF444444" />
+
+        <TextView
+            android:id="@+id/txtStopCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentRight="true"
+            android:textSize="14sp"
+            android:textColor="#FFFFFFFF"
+            android:background="#FF444444" />
+
+        <TextView
+            android:id="@+id/txtMoveStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@+id/txtSpeedCaption"
+            android:layout_alignParentRight="true"
+            android:textSize="14sp"
+            android:textColor="#FFFFFFFF"
+            android:background="#FF444444" />
+
+        <TextView
+            android:id="@+id/txtIntersections"
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
+            android:layout_alignParentLeft="true"
+            android:layout_below="@+id/txtStatus"
+            android:layout_above="@+id/txtSpeedCaption"
+            android:layout_marginTop="2dp"
+            android:textSize="14sp"
+            android:textColor="#FFFFFFFF"
+            android:background="#FF444444" />
+
+    </RelativeLayout>
        
 </RelativeLayout>

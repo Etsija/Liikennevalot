@@ -1,9 +1,7 @@
 package com.github.etsija.liikennevalot;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -41,6 +39,7 @@ import android.view.View.OnLongClickListener;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemSelectedListener;
 import android.widget.Button;
+import android.widget.RelativeLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -63,16 +62,20 @@ public class MainActivity extends FragmentActivity {
 	Vehicle vehicle = new Vehicle();
 	MediaPlayer mp;
 	int soundGreen, soundRed;
-	float acceleration[] = new float[3];
-	boolean stoppedAtIntersection = false;
-	boolean isGreen = true;
+	boolean isRedPressed = false;
 	
 	// UI elements
-	Spinner listat;
-	Button btnIntersection;
-	TextView txtStatus;
-	Button btnRed;
-	Button btnGreen;
+	Spinner        listat;
+	Button         btnIntersection;
+	Button         btnRed;
+	Button         btnGreen;
+	RelativeLayout layoutStatus;
+	TextView       txtStatus;
+	TextView       txtIntersections;
+	TextView       txtSpeedCaption;
+	TextView       txtSpeed;
+	TextView       txtMoveStatus;
+	TextView       txtStopCount;
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -123,17 +126,25 @@ public class MainActivity extends FragmentActivity {
 		btnIntersection.setTextSize(20);
 		btnIntersection.setOnClickListener(btnIntersectionListener);
 		btnIntersection.setOnLongClickListener(btnIntersectionLongClickListener);
-		setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
 		if (currLocation == null)
 			btnIntersection.setEnabled(false);
 		
-		// TEXTVIEW for showing intersection info
+		// STATUS LAYOUT and all of its TextViews
+		layoutStatus = (RelativeLayout) findViewById(R.id.layoutStatus);
+		layoutStatus.setOnClickListener(null);
+		layoutStatus.setOnLongClickListener(null);
 		txtStatus = (TextView) findViewById(R.id.txtStatus);
-		txtStatus.setBackgroundColor(Color.DKGRAY);
-		txtStatus.setTextColor(Color.WHITE);
-		txtStatus.setTextSize(14);
-		txtStatus.setOnClickListener(null);
-		txtStatus.setOnLongClickListener(null);
+		txtStatus.setText("ODOTETAAN PAIKANNUSTA...");
+		txtIntersections = (TextView) findViewById(R.id.txtIntersections);
+		txtSpeedCaption = (TextView) findViewById(R.id.txtSpeedCaption);
+		txtSpeedCaption.setText("NOPEUS");
+		txtSpeed = (TextView) findViewById(R.id.txtSpeed);
+		txtSpeed.setText("*** km/h");
+		txtMoveStatus = (TextView) findViewById(R.id.txtMoveStatus);
+		//txtMoveStatus.setText("");
+		txtMoveStatus.setText("AVG " + db.getWaitingtimeOfArea(currArea) + " s");
+		txtStopCount = (TextView) findViewById(R.id.txtStopCount);
+		txtStopCount.setText("");
 		
 		// RED BUTTON
 		btnRed = (Button) findViewById(R.id.buttonRed); 
@@ -142,7 +153,7 @@ public class MainActivity extends FragmentActivity {
 		btnRed.setTextSize(20);
 		btnRed.setOnClickListener(btnRedListener);
 		btnRed.setOnLongClickListener(btnRedLongClickListener);
-		setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
+		setButtonText(btnRed, Integer.toString(db.getNLightsOfArea(currArea, "RED")));
 		if (currLocation == null)
 			btnRed.setEnabled(false);
 
@@ -153,7 +164,7 @@ public class MainActivity extends FragmentActivity {
 		btnGreen.setTextSize(20);
 		btnGreen.setOnClickListener(btnGreenListener);
 		btnGreen.setOnLongClickListener(btnGreenLongClickListener);
-		setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
+		setButtonText(btnGreen, Integer.toString(db.getNLightsOfArea(currArea, "GREEN")));
 		if (currLocation == null)
 			btnGreen.setEnabled(false);
 		
@@ -238,7 +249,7 @@ public class MainActivity extends FragmentActivity {
 		final Spinner listat = (Spinner) findViewById(R.id.listat);
 		for (int i = 0; i < listat.getCount(); i++) {
 			String txtList = listat.getItemAtPosition(i).toString();
-			writeKMLFile(txtList + ".txt");
+			writeKMLFile(db.getArea(txtList));
 		}
       
 		// Stop listening to location updates when app is closed
@@ -316,11 +327,10 @@ public class MainActivity extends FragmentActivity {
 		return entry;
 	}
 	
-	// This method reads the logfile and creates a KML file for Google Earth
-	public void writeKMLFile(String logFileName)  {
+	// This method traverses the SQLite database and creates a KML file for Google Earth for an area
+	public void writeKMLFile(Area area) {
 		
-		String[] strTmp = logFileName.split("\\.");
-		String kmlFileName = strTmp[0] + ".kml";  // inputfile.txt -> inputfile -> inputfile.kml
+		String kmlFileName = area.getName() + ".kml";
 		Log.d("LIIKENNEVALOT", kmlFileName);
 		
 		if (!Utils.isExternalStorageWritable()) return;
@@ -352,41 +362,48 @@ public class MainActivity extends FragmentActivity {
         String kmlend =    "  </Document>\n" +
         			       "</kml>";
         
-        // Main loop: read the logfile line by line, parse, and write to KML file entry by entry
-        try {
-    		File inputFile = new File(Environment.getExternalStorageDirectory(), logFileName);
-			if (!inputFile.isFile()) {
-				//Toast.makeText(getApplicationContext(), logFileName + " is not a valid text file", Toast.LENGTH_SHORT).show();
-				return;
-			}
-			File kmlFile = new File(Environment.getExternalStorageDirectory(), kmlFileName);
-			BufferedReader reader = new BufferedReader(new FileReader(inputFile));
+		File kmlFile = new File(Environment.getExternalStorageDirectory(), kmlFileName);
+		
+		try {	
 			BufferedWriter writer = new BufferedWriter(new FileWriter(kmlFile));
-			
 			// Write the static stuff first
 			writer.write(kmlstart);
 			writer.write(kmlstyle1);
 			writer.write(kmlstyle2);
 
-			// Then the dynamic stuff, ie. the Placemarks
-			String currentLine = null;
+			List<Intersection> intersections = db.getIntersectionsOfArea(area);
+			for (Intersection intersection : intersections) {
 			
-			// Read one line at a time, parse, construct the needed strings -> output to KML file
-			while ((currentLine = reader.readLine()) != null) {
-				String[] txtParse = currentLine.split(",");
-				String time     = txtParse[2] + "." + txtParse[1] + "." + txtParse[0] + " " + 
-				                  txtParse[3] + ":" + txtParse[4] + ":" + txtParse[5];
-				String button   = txtParse[6];
-				String location = txtParse[8] + "," + txtParse[7]; // NOTE: longitude first, then latitude (GE wants this)
-				String address  = txtParse[9];
+				int nRed   = db.getNLightsOfIntersection(intersection.getId(), "RED");
+				int nGreen = db.getNLightsOfIntersection(intersection.getId(), "GREEN");
+				int diff   = nRed - nGreen;
+				String address  = intersection.getAddress();
+				String location = intersection.getLongitude() + "," + intersection.getLatitude();
 				
-				// Write to KML only the entries which have a location!  No use writing ones without
-				if (!location.contains("NO_LOC,NO_LOC")) {
+				// RED placemark with diff as title
+				if (diff > 0) {	
 					writer.write("    <Placemark>\n");
-					writer.write("      <styleUrl>#" + button + "</styleUrl>\n");
+					writer.write("      <name>" + diff + "</name>\n");
+					writer.write("      <styleUrl>#" + "RED" + "</styleUrl>\n");
 					writer.write("      <description>\n");
 					writer.write("        <![CDATA[\n");
-					writer.write("          <p>" + time + "</p>\n");
+					writer.write("          <p>Intersection ID: " + intersection.getId() + "</p>\n");
+					writer.write("          <p>Geohash: " + intersection.getGeohash() + "</p>\n");
+					writer.write("          <p><font color=\"red\">" + address + "</font></p>\n");
+					writer.write("        ]]>\n");
+					writer.write("      </description>\n");
+					writer.write("      <Point>\n");
+					writer.write("        <coordinates>" + location + "</coordinates>\n");
+					writer.write("      </Point>\n");
+					writer.write("    </Placemark>\n");
+				} else if (diff < 0) {
+					writer.write("    <Placemark>\n");
+					writer.write("      <name>" + -diff + "</name>\n");
+					writer.write("      <styleUrl>#" + "GREEN" + "</styleUrl>\n");
+					writer.write("      <description>\n");
+					writer.write("        <![CDATA[\n");
+					writer.write("          <p>Intersection ID: " + intersection.getId() + "</p>\n");
+					writer.write("          <p>Geohash: " + intersection.getGeohash() + "</p>\n");
 					writer.write("          <p><font color=\"red\">" + address + "</font></p>\n");
 					writer.write("        ]]>\n");
 					writer.write("      </description>\n");
@@ -396,12 +413,8 @@ public class MainActivity extends FragmentActivity {
 					writer.write("    </Placemark>\n");
 				}
 			}
-			
-			// Write the end and close streams
 			writer.write(kmlend);
-			reader.close();
 			writer.close();
-			
         } catch (IOException e) {
         	e.printStackTrace();
         }
@@ -415,8 +428,12 @@ public class MainActivity extends FragmentActivity {
         }
         if (sound.equals("enter_intersection"))
             mp = MediaPlayer.create(this, R.raw.enter_intersection);
+        else if (sound.equals("enter_intersection_christmas"))
+            mp = MediaPlayer.create(this, R.raw.enter_intersection_christmas);
         else if (sound.equals("exit_intersection"))
             mp = MediaPlayer.create(this, R.raw.exit_intersection);
+        else if (sound.equals("exit_intersection_christmas"))
+            mp = MediaPlayer.create(this, R.raw.exit_intersection_christmas);
         else if (sound.equals("intersection_click"))
             mp = MediaPlayer.create(this, R.raw.intersection_click);
         else if (sound.equals("intersection_doubleclick"))
@@ -434,8 +451,7 @@ public class MainActivity extends FragmentActivity {
         mp.start();
     }
     
-    // Suggest a GREEN trafficlight event.  The suggestion can be cancelled and
-    // turned into a RED one by clicking a button.  If not, it is enforced in some seconds
+    // Suggest a GREEN trafficlight event and notify the driver
     public void addGreen(Intersection intersection) {
     	Trafficlight trafficlight = new Trafficlight();
     	trafficlight.setIdIntersection(intersection.getId());
@@ -445,49 +461,25 @@ public class MainActivity extends FragmentActivity {
     	trafficlight.setLight("GREEN");
 		db.createTrafficlight(trafficlight);
     	playSound("green_click");
-    	setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
-		setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
+    	setButtonText(btnGreen, Integer.toString(db.getNLightsOfArea(currArea, "GREEN")));
+		setButtonText(btnRed, Integer.toString(db.getNLightsOfArea(currArea, "RED")));
     	
 		final Timer t = new Timer();
 		AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
 		builder.setTitle("Valo oli VIHREÄ");
-		builder.setMessage("Se lisätään automaagisesti!");
+		builder.setMessage("Se lisättiin automaattisesti tietokantaan.");
 		builder.setCancelable(true);
-		
-		/*
-		builder.setPositiveButton("RED", new DialogInterface.OnClickListener() {
-		    public void onClick(DialogInterface dialog, int whichButton) {
-		    	isGreen = false;
-		    	if (t != null) 
-		    		t.cancel();
-		    }
-		});
-		*/
 		
 		final AlertDialog dlg = builder.create();
 		dlg.show();
 		
 		t.schedule(new TimerTask() {
 		    public void run() {
-		    	//isGreen = true;
 		        dlg.dismiss(); 
 		        if (t != null) 
 		        	t.cancel();
 		    }
-		}, 5000);
-		
-		/*
-		if (isGreen) {
-			trafficlight.setLight("GREEN");
-			db.createTrafficlight(trafficlight);
-	    	playSound("green_click");
-		} else {
-			trafficlight.setLight("RED");
-			db.createTrafficlight(trafficlight);
-	    	playSound("red_click");
-		}
-		*/
-			
+		}, 3000);
     }
     
     ///////////////////////////////////////////////////////////////////////////
@@ -500,9 +492,10 @@ public class MainActivity extends FragmentActivity {
 	            int pos, long id) {
 	        lastList = parent.getItemAtPosition(pos).toString();
 			currArea = db.getArea(lastList);
-        	setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
-        	setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
-        	setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
+			setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
+        	setButtonText(btnRed, Integer.toString(db.getNLightsOfArea(currArea, "RED")));
+        	setButtonText(btnGreen, Integer.toString(db.getNLightsOfArea(currArea, "GREEN")));
+        	txtMoveStatus.setText("AVG " + db.getWaitingtimeOfArea(currArea) + " s");
 	    }
 		
 	    public void onNothingSelected(AdapterView<?> parent) {
@@ -543,8 +536,8 @@ public class MainActivity extends FragmentActivity {
             		// Delete this intersection
             		db.deleteNewestIntersectionFromArea(currArea);
             		setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
-            		setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
-					setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
+            		setButtonText(btnRed, Integer.toString(db.getNLightsOfArea(currArea, "RED")));
+					setButtonText(btnGreen, Integer.toString(db.getNLightsOfArea(currArea, "GREEN")));
 					playSound("intersection_doubleclick");
             	}
             }).setNegativeButton("Ei", new DialogInterface.OnClickListener() {
@@ -557,7 +550,7 @@ public class MainActivity extends FragmentActivity {
 	};
 	
 	// STATUS SCREEN click: move intersection here
-	final OnClickListener txtStatusListener = new OnClickListener() {
+	final OnClickListener layoutStatusListener = new OnClickListener() {
         public void onClick(View v) {
         	
         	final Location loc = currLocation;
@@ -591,7 +584,7 @@ public class MainActivity extends FragmentActivity {
 	};
     
 	// STATUS SCREEN longclick: delete this intersection
-	final OnLongClickListener txtStatusLongClickListener = new OnLongClickListener() {
+	final OnLongClickListener layoutStatusLongClickListener = new OnLongClickListener() {
 		public boolean onLongClick(View v) {
 			if (!(vehicle.status == Status.OUTSIDE_INTERSECTION)) {
 				new AlertDialog.Builder(MainActivity.this)
@@ -603,8 +596,8 @@ public class MainActivity extends FragmentActivity {
             			// Delete this intersection
             			db.deleteIntersection(vehicle.getIntersectionId());
             			setButtonText(btnIntersection, Integer.toString(db.getIntersectionsOfArea(currArea).size()));
-            			setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
-						setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
+            			setButtonText(btnRed, Integer.toString(db.getNLightsOfArea(currArea, "RED")));
+						setButtonText(btnGreen, Integer.toString(db.getNLightsOfArea(currArea, "GREEN")));
 						//txtStatus.setOnClickListener(null);
 						vehicle.status = Status.OUTSIDE_INTERSECTION;
 						playSound("intersection_doubleclick");
@@ -631,13 +624,14 @@ public class MainActivity extends FragmentActivity {
         	trafficlight.setLatitude(currLocation.getLatitude());
         	trafficlight.setLongitude(currLocation.getLongitude());
         	trafficlight.setLight("RED");
-        	vehicle.nStopped = 1;	// If user clicks RED, no GREEN is suggested at the intersection border
+        	vehicle.suggestGreen = false;	// If user clicks RED, no GREEN is suggested at the intersection border
+        	isRedPressed = true;
         	db.createTrafficlight(trafficlight);
         	playSound("red_click");
         	if (vehicle.status == Status.OUTSIDE_INTERSECTION)
-        		setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
+        		setButtonText(btnRed, Integer.toString(db.getNLightsOfArea(currArea, "RED")));
         	else
-        		setButtonText(btnRed, Integer.toString(db.getLightsOfIntersection(vehicle.getIntersectionId(), "RED")));
+        		setButtonText(btnRed, Integer.toString(db.getNLightsOfIntersection(vehicle.getIntersectionId(), "RED")));
         	Toast.makeText(getApplicationContext(), 
         			       setClickInfoText(getNow(), locStringFromLoc(currLocation)), 
         			       Toast.LENGTH_SHORT).show();
@@ -650,9 +644,9 @@ public class MainActivity extends FragmentActivity {
 			db.deleteNewestTrafficlightFromArea(currArea, "RED");
 			playSound("red_doubleclick");
 			if (vehicle.status == Status.OUTSIDE_INTERSECTION)
-        		setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
+        		setButtonText(btnRed, Integer.toString(db.getNLightsOfArea(currArea, "RED")));
         	else
-        		setButtonText(btnRed, Integer.toString(db.getLightsOfIntersection(vehicle.getIntersectionId(), "RED")));
+        		setButtonText(btnRed, Integer.toString(db.getNLightsOfIntersection(vehicle.getIntersectionId(), "RED")));
 			return true;
 		}
 	};
@@ -669,12 +663,13 @@ public class MainActivity extends FragmentActivity {
         	trafficlight.setLatitude(currLocation.getLatitude());
         	trafficlight.setLongitude(currLocation.getLongitude());
         	trafficlight.setLight("GREEN");
+        	vehicle.suggestGreen = false;	// If user clicks GREEN, no light is suggested at the intersection border
         	db.createTrafficlight(trafficlight);	        	
         	playSound("green_click");
         	if (vehicle.status == Status.OUTSIDE_INTERSECTION)
-        		setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
+        		setButtonText(btnGreen, Integer.toString(db.getNLightsOfArea(currArea, "GREEN")));
         	else
-        		setButtonText(btnGreen, Integer.toString(db.getLightsOfIntersection(vehicle.getIntersectionId(), "GREEN")));
+        		setButtonText(btnGreen, Integer.toString(db.getNLightsOfIntersection(vehicle.getIntersectionId(), "GREEN")));
         	Toast.makeText(getApplicationContext(), 
         			       setClickInfoText(getNow(), locStringFromLoc(currLocation)),
         			       Toast.LENGTH_SHORT).show();
@@ -687,9 +682,9 @@ public class MainActivity extends FragmentActivity {
 			db.deleteNewestTrafficlightFromArea(currArea, "GREEN");
 			playSound("green_doubleclick");
 			if (vehicle.status == Status.OUTSIDE_INTERSECTION)
-        		setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
+        		setButtonText(btnGreen, Integer.toString(db.getNLightsOfArea(currArea, "GREEN")));
         	else
-        		setButtonText(btnGreen, Integer.toString(db.getLightsOfIntersection(vehicle.getIntersectionId(), "GREEN")));
+        		setButtonText(btnGreen, Integer.toString(db.getNLightsOfIntersection(vehicle.getIntersectionId(), "GREEN")));
 			return true;
 		}
 	};
@@ -703,102 +698,123 @@ public class MainActivity extends FragmentActivity {
 			String strIntersection = "";
 			
 			currLocation = loc;
-			if (currLocation != null) {
-				// Update coordinates of the Vehicle object (representing my vehicle)
-				vehicle.setLatitude(currLocation.getLatitude());
-				vehicle.setLongitude(currLocation.getLongitude());
-				vehicle.setSpeed(currLocation.getSpeed());
-				String strSpeed = "\n\nSPEED = " + String.format("%2d", (int)vehicle.getSpeed());
+			if (currLocation == null) return;
+			
+			// Update coordinates of the Vehicle object (representing my vehicle)
+			vehicle.setLatitude(currLocation.getLatitude());
+			vehicle.setLongitude(currLocation.getLongitude());
+			vehicle.setSpeed(currLocation.getSpeed());
+			txtSpeed.setText(String.format("%2d", (int)vehicle.getSpeed()) + " km/h");
 
-				btnIntersection.setEnabled(true);
-				String geohash = GeoHashUtils.encode(currLocation.getLatitude(), currLocation.getLongitude());
-				nearestIntersections = db.getNearestIntersections(currArea, geohash, 7);
+			btnIntersection.setEnabled(true);
+			String geohash = GeoHashUtils.encode(currLocation.getLatitude(), currLocation.getLongitude());
+			nearestIntersections = db.getNearestIntersections(currArea, geohash, 7);
 				
-				// Loop through all intersections near the user
-				for (Intersection intersection : nearestIntersections) {
+			// Loop through all intersections near the user
+			for (Intersection intersection : nearestIntersections) {
 
-					vehicle.setDistance(intersection);
-					String strDist  = String.format("%4d", (int)vehicle.getDistance());
-					String strAddr  = intersection.getAddress();
+				vehicle.setDistance(intersection);
+				String strDist  = String.format("%4d", (int)vehicle.getDistance());
+				String strAddr  = intersection.getAddress();
 					
-					strOutside += strDist + " : " + strAddr + "\n";
+				strOutside += strDist + " : " + strAddr + "\n";
 					
-					// State transition: OUTSIDE_INTERSECTION -> ENTER_INTERSECTION
-					if ((vehicle.status == Status.OUTSIDE_INTERSECTION) && 
-						(vehicle.getDistance() <= radius)) {
-						playSound("enter_intersection");
-						setButtonText(btnRed, Integer.toString(db.getLightsOfIntersection(intersection.getId(), "RED")));
-						setButtonText(btnGreen, Integer.toString(db.getLightsOfIntersection(intersection.getId(), "GREEN")));
-						vehicle.setIntersectionId(intersection.getId());
-						vehicle.status = Status.ENTER_INTERSECTION;
-						vehicle.nStopped = 0;
-						vehicle.checkStop();
-						strIntersection = "ENTER INTERSECTION\n" + strDist + " : " + strAddr + strSpeed
-										+ "\n" + vehicle.nStopped;
-
-					// State transition: ENTER_INTERSECTION -> AT_INTERSECTION
-					} else if ((vehicle.status == Status.ENTER_INTERSECTION) && 
-							   (vehicle.getDistance() <= radius) &&
-							   (vehicle.getIntersectionId() == intersection.getId())) {
-						vehicle.status = Status.AT_INTERSECTION;
-						vehicle.checkStop();
-						strIntersection = "AT INTERSECTION\n" + strDist + " : " + strAddr + strSpeed
-								+ "\n" + vehicle.nStopped;
-
-					// State transition: AT_INTERSECTION -> AT_INTERSECTION (self-loop)
-					} else if ((vehicle.status == Status.AT_INTERSECTION) &&
-							   (vehicle.getDistance() <= radius) &&
-							   (vehicle.getIntersectionId() == intersection.getId())) {
-						vehicle.status = Status.AT_INTERSECTION;
-						vehicle.checkStop();
-						strIntersection = "AT INTERSECTION\n" + strDist + " : " + strAddr + strSpeed
-								+ "\n" + vehicle.nStopped;
+				// State transition: OUTSIDE_INTERSECTION -> ENTER_INTERSECTION
+				if ((vehicle.status == Status.OUTSIDE_INTERSECTION) && 
+					(vehicle.getDistance() <= radius)) {
+					playSound("enter_intersection_christmas");
+					setButtonText(btnRed, Integer.toString(db.getNLightsOfIntersection(intersection.getId(), "RED")));
+					setButtonText(btnGreen, Integer.toString(db.getNLightsOfIntersection(intersection.getId(), "GREEN")));
+					vehicle.setIntersectionId(intersection.getId());
+					vehicle.status = Status.ENTER_INTERSECTION;
+					vehicle.stopCount = 0;
+					vehicle.suggestGreen = true;  // Suggest GREEN light at border, IF the vehicle didn't stop
+					isRedPressed = false;
+					vehicle.checkStop(); // Check if it indeed stopped here
+					strIntersection = strDist + " : " + strAddr;
+					txtStatus.setText("SAAVUIT RISTEYKSEEN");
+					//txtMoveStatus.setText(strStopped);
+					txtMoveStatus.setText("AVG " + db.getWaitingtimeOfIntersection(intersection.getId(), "RED") + " s");
+					txtStopCount.setText(String.format("%2d", vehicle.stopCount) + " s");
+					
+				// State transition: ENTER_INTERSECTION -> AT_INTERSECTION
+				} else if ((vehicle.status == Status.ENTER_INTERSECTION) && 
+						   (vehicle.getDistance() <= radius) &&
+						   (vehicle.getIntersectionId() == intersection.getId())) {
+					vehicle.status = Status.AT_INTERSECTION;
+					vehicle.checkStop();
+					strIntersection = strDist + " : " + strAddr;
+					txtStatus.setText("RISTEYSALUEELLA");
+					//txtMoveStatus.setText(strStopped);
+					txtMoveStatus.setText("AVG " + db.getWaitingtimeOfIntersection(intersection.getId(), "RED") + " s");
+					txtStopCount.setText(String.format("%2d", vehicle.stopCount) + " s");
 						
-					// State transition: AT_INTERSECTION -> EXIT_INTERSECTION
-					} else if ((vehicle.status == Status.AT_INTERSECTION) &&
-							   (vehicle.getDistance() >= radius) &&
-							   (vehicle.getIntersectionId() == intersection.getId())) {
-						playSound("exit_intersection");
-						setButtonText(btnRed, Integer.toString(db.getLightsOfArea(currArea, "RED")));
-						setButtonText(btnGreen, Integer.toString(db.getLightsOfArea(currArea, "GREEN")));
-						vehicle.status = Status.EXIT_INTERSECTION;
-						vehicle.checkStop();
-						strIntersection = "EXIT INTERSECTION\n" + strDist + " : " + strAddr + strSpeed
-								+ "\n" + vehicle.nStopped;
-
-					// State transition: EXIT_INTERSECTION -> OUTSIDE_INTERSECTION
-					} else if ((vehicle.status == Status.EXIT_INTERSECTION) &&
-							   (vehicle.getDistance() >= radius) &&
-							   (vehicle.getIntersectionId() == intersection.getId())) {
-						if (vehicle.nStopped == 0)
-							addGreen(intersection);
-						vehicle.setIntersectionId(-1);
-						vehicle.status = Status.OUTSIDE_INTERSECTION;
-					}						
-				}
-				strOutside += strSpeed;
-				//strOutside += "\nSTOPPED AT INTERSECTION : " + vehicle.nStopped + " times";
-				
-				// When not in intersection:
-				if (vehicle.status == Status.OUTSIDE_INTERSECTION) {
-					txtStatus.setText(strOutside);
-					txtStatus.setOnClickListener(null);
-					txtStatus.setOnLongClickListener(null);
-					btnIntersection.setEnabled(true);
-					btnRed.setEnabled(false);
-					btnGreen.setEnabled(false);
+				// State transition: AT_INTERSECTION -> AT_INTERSECTION (self-loop)
+				} else if ((vehicle.status == Status.AT_INTERSECTION) &&
+						   (vehicle.getDistance() <= radius) &&
+						   (vehicle.getIntersectionId() == intersection.getId())) {
+					vehicle.status = Status.AT_INTERSECTION;
+					vehicle.checkStop();
+					strIntersection = strDist + " : " + strAddr;
+					txtStatus.setText("RISTEYSALUEELLA");
+					//txtMoveStatus.setText(strStopped);
+					txtMoveStatus.setText("AVG " + db.getWaitingtimeOfIntersection(intersection.getId(), "RED") + " s");
+					txtStopCount.setText(String.format("%2d", vehicle.stopCount) + " s");
+						
+				// State transition: AT_INTERSECTION -> EXIT_INTERSECTION
+				} else if ((vehicle.status == Status.AT_INTERSECTION) &&
+						   (vehicle.getDistance() >= radius) &&
+						   (vehicle.getIntersectionId() == intersection.getId())) {
+					playSound("exit_intersection_christmas");
+					setButtonText(btnRed, Integer.toString(db.getNLightsOfArea(currArea, "RED")));
+					setButtonText(btnGreen, Integer.toString(db.getNLightsOfArea(currArea, "GREEN")));
+					vehicle.status = Status.EXIT_INTERSECTION;
+					vehicle.checkStop();
+					strIntersection = strDist + " : " + strAddr;
+					txtStatus.setText("POISTUIT RISTEYKSESTÄ");
+					//txtMoveStatus.setText(strStopped);
+					txtMoveStatus.setText("AVG " + db.getWaitingtimeOfIntersection(intersection.getId(), "RED") + " s");
+					txtStopCount.setText(String.format("%2d", vehicle.stopCount) + " s");
+						
+				// State transition: EXIT_INTERSECTION -> OUTSIDE_INTERSECTION
+				} else if ((vehicle.status == Status.EXIT_INTERSECTION) &&
+						   (vehicle.getDistance() >= radius) &&
+						   (vehicle.getIntersectionId() == intersection.getId())) {
+					if (vehicle.suggestGreen)
+						addGreen(intersection);
 					
-				// When in intersection:
-				} else { 
-					txtStatus.setText(strIntersection);
-					txtStatus.setOnClickListener(txtStatusListener);
-					txtStatus.setOnLongClickListener(txtStatusLongClickListener);
-					btnIntersection.setEnabled(false);
-					btnRed.setEnabled(true);
-					btnGreen.setEnabled(true);
-				}
-			} else {
+					// If RED was pressed at this intersection, update the event's waitingtime field in the db
+					if (isRedPressed) {
+						Trafficlight trafficlight = db.getNewestLightOfIntersection(intersection.getId(), "RED");
+						trafficlight.setWaitingTime(vehicle.stopCount);
+						db.updateTrafficlight(trafficlight);
+					}
+					vehicle.setIntersectionId(-1);
+					vehicle.status = Status.OUTSIDE_INTERSECTION;
+				}						
+			}
+				
+			// When not in intersection:
+			if (vehicle.status == Status.OUTSIDE_INTERSECTION) {
+				layoutStatus.setOnClickListener(null);
+				layoutStatus.setOnLongClickListener(null);
+				txtStatus.setText("LÄHIMMÄT RISTEYKSET");
+				txtIntersections.setText(strOutside);
+				//txtMoveStatus.setText("");
+				txtMoveStatus.setText("AVG " + db.getWaitingtimeOfArea(currArea) + " s");
+				txtStopCount.setText("");
+				btnIntersection.setEnabled(true);
+				btnRed.setEnabled(false);
+				btnGreen.setEnabled(false);
+					
+			// When in intersection:
+			} else { 
+				layoutStatus.setOnClickListener(layoutStatusListener);
+				layoutStatus.setOnLongClickListener(layoutStatusLongClickListener);
+				txtIntersections.setText(strIntersection);
 				btnIntersection.setEnabled(false);
+				btnRed.setEnabled(true);
+				btnGreen.setEnabled(true);
 			}
 		}
 

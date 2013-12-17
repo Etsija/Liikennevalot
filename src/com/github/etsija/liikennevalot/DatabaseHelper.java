@@ -19,9 +19,6 @@ import android.util.Log;
 
 @SuppressLint("SimpleDateFormat")
 public class DatabaseHelper extends SQLiteOpenHelper {
-
-	// Tag for the logging
-	private static final String LOG = "SQLITE";
 	
 	// Db version
 	private static final int DB_VERSION = 1;
@@ -58,6 +55,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 								+ "latitude REAL NOT NULL, "
 								+ "longitude REAL NOT NULL, "
 								+ "light TEXT, "
+								+ "waitingtime INTEGER, "
 								+ "FOREIGN KEY(id_intersection) REFERENCES intersection(id) ON DELETE CASCADE)";
 
 	// Default constructor: create the db to ext SD, in application folder!
@@ -470,6 +468,24 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 		return retIntersections;
 	}
 	
+	// Calc & return average intersection waiting time for all intersections in the area
+	public int getWaitingtimeOfArea(Area area) {
+		SQLiteDatabase db = this.getReadableDatabase();
+		int average;
+		
+		String sqlQuery = "SELECT AVG(waitingtime) FROM"
+				+ " (SELECT i.* FROM area AS a, intersection AS i"
+				+ "  WHERE a.name = '" + area.getName() + "' AND a.id = i.id_area)"
+				+ "AS tmp, trafficlight AS t "
+				+ "WHERE tmp.id = t.id_intersection "
+				+ "AND t.light = 'RED'";
+		
+		Cursor c = db.rawQuery(sqlQuery, null);
+		c.moveToFirst();
+		average = Math.round(c.getFloat(0));
+		return average;
+	}
+	
 	// Update a row
 	public int updateIntersection(Intersection intersection) {
 		SQLiteDatabase db = this.getWritableDatabase();
@@ -491,7 +507,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 	// Temp method to do a batch update to the intersection geohashes in case
 	// intersection coordinates are manually changed
     public void updateIntersectionGeohashes() {
-    	SQLiteDatabase db = this.getWritableDatabase();
     	List<Intersection> intersections = new ArrayList<Intersection>();
     	
     	intersections = getAllIntersections();
@@ -549,6 +564,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 		values.put("latitude", trafficlight.getLatitude());
 		values.put("longitude", trafficlight.getLongitude());
 		values.put("light", trafficlight.getLight());
+		if (trafficlight.getWaitingTime() > 0)
+			values.put("waitingtime", trafficlight.getWaitingTime());
 		
 		// Insert the new row to table
 		long id = db.insert("trafficlight", null, values);
@@ -568,6 +585,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 		values.put("latitude", trafficlight.getLatitude());
 		values.put("longitude", trafficlight.getLongitude());
 		values.put("light", trafficlight.getLight());
+		if (trafficlight.getWaitingTime() > 0)
+			values.put("waitingtime", trafficlight.getWaitingTime());
 		
 		// Insert the new row to table
 		long id = db.insert("trafficlight", null, values);
@@ -601,14 +620,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 				retTrafficlight.setLatitude(c.getDouble(c.getColumnIndex("latitude")));
 				retTrafficlight.setLongitude(c.getDouble(c.getColumnIndex("longitude")));
 				retTrafficlight.setLight(c.getString(c.getColumnIndex("light")));
+				retTrafficlight.setWaitingTime(c.getInt(c.getColumnIndex("waitingtime")));
 				retTrafficlights.add(retTrafficlight);
 			} while (c.moveToNext());
 		}
 		return retTrafficlights;
 	}
 	
-	// Get all trafficlight events of an area, either RED or GREEN
-	public int getLightsOfArea(Area area, String light) {
+	// Get number of trafficlight events of an area, either RED or GREEN
+	public int getNLightsOfArea(Area area, String light) {
 		SQLiteDatabase db = this.getReadableDatabase();
 		
 		String sqlQuery = "SELECT t.* FROM"
@@ -621,8 +641,45 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 		return c.getCount();
 	}
 	
+	// Get all trafficlight events of an area, either RED or GREEN
+	public List<Trafficlight> getLightsOfArea(Area area, String light) {
+		SQLiteDatabase db = this.getReadableDatabase();
+		List<Trafficlight> retTrafficlights = new ArrayList<Trafficlight>();
+		
+		String sqlQuery = "SELECT t.* FROM"
+						+ " (SELECT i.* FROM area AS a, intersection AS i"
+						+ "  WHERE a.name = '" + area.getName() + "' AND a.id = i.id_area)"
+						+ "AS tmp, trafficlight AS t "
+						+ "WHERE tmp.id = t.id_intersection "
+						+ "AND t.light = '" + light + "'";
+		Cursor c = db.rawQuery(sqlQuery, null);
+		
+		if (c.moveToFirst()) {
+			do {
+				Trafficlight retTrafficlight = new Trafficlight();
+				retTrafficlight.setId(c.getLong(c.getColumnIndex("id")));
+				retTrafficlight.setIdIntersection(c.getLong(c.getColumnIndex("id_intersection")));
+				SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+				try {
+					String strTemp = c.getString(c.getColumnIndex("timestamp"));
+					Date date = sdf.parse(strTemp);
+					retTrafficlight.setTime(date);
+				} catch (ParseException e) {
+					e.printStackTrace();
+				}
+				retTrafficlight.setGeohash(c.getString(c.getColumnIndex("geohash")));
+				retTrafficlight.setLatitude(c.getDouble(c.getColumnIndex("latitude")));
+				retTrafficlight.setLongitude(c.getDouble(c.getColumnIndex("longitude")));
+				retTrafficlight.setLight(c.getString(c.getColumnIndex("light")));
+				retTrafficlight.setWaitingTime(c.getInt(c.getColumnIndex("waitingtime")));
+				retTrafficlights.add(retTrafficlight);
+			} while (c.moveToNext());
+		}
+		return retTrafficlights;
+	}
+	
 	// Get trafficlight counts of an intersection
-	public int getLightsOfIntersection(long id_intersection, String light) {
+	public int getNLightsOfIntersection(long id_intersection, String light) {
 		SQLiteDatabase db = this.getReadableDatabase();
 		
 		String sqlQuery = "SELECT * FROM trafficlight "
@@ -630,6 +687,86 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 				        + "AND light = '" + light + "'";
 		Cursor c = db.rawQuery(sqlQuery, null);
 		return c.getCount();
+	}
+	
+	// Get all trafficlight events of an intersection
+	public List<Trafficlight> getLightsOfIntersection(long id_intersection, String light) {
+		SQLiteDatabase db = this.getReadableDatabase();
+		List<Trafficlight> retTrafficlights = new ArrayList<Trafficlight>();
+		
+		String sqlQuery = "SELECT * FROM trafficlight "
+				        + "WHERE id_intersection = " + id_intersection + " "
+				        + "AND light = '" + light + "'";
+		Cursor c = db.rawQuery(sqlQuery, null);
+		
+		if (c.moveToFirst()) {
+			do {
+				Trafficlight retTrafficlight = new Trafficlight();
+				retTrafficlight.setId(c.getLong(c.getColumnIndex("id")));
+				retTrafficlight.setIdIntersection(c.getLong(c.getColumnIndex("id_intersection")));
+				SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+				try {
+					String strTemp = c.getString(c.getColumnIndex("timestamp"));
+					Date date = sdf.parse(strTemp);
+					retTrafficlight.setTime(date);
+				} catch (ParseException e) {
+					e.printStackTrace();
+				}
+				retTrafficlight.setGeohash(c.getString(c.getColumnIndex("geohash")));
+				retTrafficlight.setLatitude(c.getDouble(c.getColumnIndex("latitude")));
+				retTrafficlight.setLongitude(c.getDouble(c.getColumnIndex("longitude")));
+				retTrafficlight.setLight(c.getString(c.getColumnIndex("light")));
+				retTrafficlight.setWaitingTime(c.getInt(c.getColumnIndex("waitingtime")));
+				retTrafficlights.add(retTrafficlight);
+			} while (c.moveToNext());
+		}
+		return retTrafficlights;
+	}
+	
+	// Calculate average waiting time at an intersection
+	public int getWaitingtimeOfIntersection(long id_intersection, String light) {
+		SQLiteDatabase db = this.getReadableDatabase();
+		int average;
+		
+		String sqlQuery = "SELECT AVG(waitingtime) FROM trafficlight "
+		        + "WHERE id_intersection = " + id_intersection + " "
+		        + "AND light = '" + light + "'";
+		
+		Cursor c = db.rawQuery(sqlQuery, null);
+		c.moveToFirst();
+		average = Math.round(c.getFloat(0));
+		return average;
+	}
+	
+	// Get newest trafficlight event of an intersection
+	public Trafficlight getNewestLightOfIntersection(long id_intersection, String light) {
+		Trafficlight retTrafficlight = new Trafficlight();
+		SQLiteDatabase db = this.getReadableDatabase();
+		
+		String sqlQuery = "SELECT * FROM trafficlight "
+				        + "WHERE id_intersection = " + id_intersection + " "
+				        + "AND light = '" + light + "' "
+				        + "ORDER BY timestamp DESC LIMIT 1";
+		Cursor c = db.rawQuery(sqlQuery, null);
+		
+		if (c.moveToFirst()) {
+			retTrafficlight.setId(c.getLong(c.getColumnIndex("id")));
+			retTrafficlight.setIdIntersection(c.getLong(c.getColumnIndex("id_intersection")));
+			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			try {
+				String strTemp = c.getString(c.getColumnIndex("timestamp"));
+				Date date = sdf.parse(strTemp);
+				retTrafficlight.setTime(date);
+			} catch (ParseException e) {
+				e.printStackTrace();
+			}
+			retTrafficlight.setGeohash(c.getString(c.getColumnIndex("geohash")));
+			retTrafficlight.setLatitude(c.getDouble(c.getColumnIndex("latitude")));
+			retTrafficlight.setLongitude(c.getDouble(c.getColumnIndex("longitude")));
+			retTrafficlight.setLight(c.getString(c.getColumnIndex("light")));
+			retTrafficlight.setWaitingTime(c.getInt(c.getColumnIndex("waitingtime")));
+		}
+		return retTrafficlight;
 	}
 	
 	// Update a row
@@ -644,6 +781,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 		values.put("latitude", trafficlight.getLatitude());
 		values.put("longitude", trafficlight.getLongitude());
 		values.put("light", trafficlight.getLight());
+		if (trafficlight.getWaitingTime() > 0)
+			values.put("waitingtime", trafficlight.getWaitingTime());
 		
 		// Update a row
 		return db.update("trafficlight", values, "id = ?", new String[] { String.valueOf(trafficlight.getId()) });

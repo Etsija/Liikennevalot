@@ -11,9 +11,8 @@ public class Vehicle {
 	private double  _oldDistance;
 	private double  _distance;
 	private boolean _enterIntersection, _insideIntersection, _exitIntersection;
-	private int     _stopCount;
-	private boolean _isStanding;
-	int nStopped;
+	int stopCount;
+	boolean suggestGreen;
 	Status status;
 	
 	public enum Status { OUTSIDE_INTERSECTION, ENTER_INTERSECTION, AT_INTERSECTION,	EXIT_INTERSECTION }
@@ -24,10 +23,9 @@ public class Vehicle {
 		this._enterIntersection = false;
 		this._insideIntersection = false;
 		this._exitIntersection = false;
-		this._stopCount = 0;
-		this._isStanding = false;
+		this.stopCount = 0;
+		this.suggestGreen = false;
 		this.status = Status.OUTSIDE_INTERSECTION;
-		this.nStopped = 0;
 	}
 	
 	public Vehicle(Location location) {
@@ -39,10 +37,9 @@ public class Vehicle {
 		this._enterIntersection = false;
 		this._insideIntersection = false;
 		this._exitIntersection = false;
-		this._stopCount = 0;
-		this._isStanding = false;
+		this.stopCount = 0;
+		this.suggestGreen = false;
 		this.status = Status.OUTSIDE_INTERSECTION;
-		this.nStopped = 0;
 	}
 
 	// Setters
@@ -147,19 +144,21 @@ public class Vehicle {
 		return strRet;
 	}
 	
-	// Has the vehicle been standing still for more than 5 seconds?
-	public boolean checkStop() {
+	// How long has the vehicle been standing still at intersection?
+	// If more than 4 seconds -> do not suggest a green light at border
+	public String checkStop() {
+		String strStopped;
+		
 		if (getSpeed() < 2) {
-			_stopCount++;
-			if (_stopCount > 4) {
-				_stopCount = 0;
-				_isStanding = true;
-				nStopped++;
+			stopCount++;
+			strStopped = "PYSÄHTYNYT";
+			if (stopCount > 4) {
+				suggestGreen = false;
 			}
 		} else {
-			_stopCount = 0;
-			_isStanding = false;
+			//stopCount = 0;
+			strStopped = "LIIKKEELLÄ";
 		}
-		return _isStanding;
+		return strStopped;
 	}
 }
