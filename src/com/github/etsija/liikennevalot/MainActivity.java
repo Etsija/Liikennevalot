@@ -214,6 +214,7 @@ public class MainActivity extends FragmentActivity {
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		// Inflate the menu; this adds items to the action bar if it is present.
+		super.onCreateOptionsMenu(menu);
 		getMenuInflater().inflate(R.menu.main, menu);
 		return true;
 	}
@@ -721,8 +722,8 @@ public class MainActivity extends FragmentActivity {
 					
 				// State transition: OUTSIDE_INTERSECTION -> ENTER_INTERSECTION
 				if ((vehicle.status == Status.OUTSIDE_INTERSECTION) && 
-					(vehicle.getDistance() <= radius)) {
-					playSound("enter_intersection_christmas");
+					(vehicle.getDistance() <= intersection.getRadius())) {
+					playSound("enter_intersection");
 					setButtonText(btnRed, Integer.toString(db.getNLightsOfIntersection(intersection.getId(), "RED")));
 					setButtonText(btnGreen, Integer.toString(db.getNLightsOfIntersection(intersection.getId(), "GREEN")));
 					vehicle.setIntersectionId(intersection.getId());
@@ -739,7 +740,7 @@ public class MainActivity extends FragmentActivity {
 					
 				// State transition: ENTER_INTERSECTION -> AT_INTERSECTION
 				} else if ((vehicle.status == Status.ENTER_INTERSECTION) && 
-						   (vehicle.getDistance() <= radius) &&
+						   (vehicle.getDistance() <= intersection.getRadius()) &&
 						   (vehicle.getIntersectionId() == intersection.getId())) {
 					vehicle.status = Status.AT_INTERSECTION;
 					vehicle.checkStop();
@@ -751,7 +752,7 @@ public class MainActivity extends FragmentActivity {
 						
 				// State transition: AT_INTERSECTION -> AT_INTERSECTION (self-loop)
 				} else if ((vehicle.status == Status.AT_INTERSECTION) &&
-						   (vehicle.getDistance() <= radius) &&
+						   (vehicle.getDistance() <= intersection.getRadius()) &&
 						   (vehicle.getIntersectionId() == intersection.getId())) {
 					vehicle.status = Status.AT_INTERSECTION;
 					vehicle.checkStop();
@@ -763,9 +764,9 @@ public class MainActivity extends FragmentActivity {
 						
 				// State transition: AT_INTERSECTION -> EXIT_INTERSECTION
 				} else if ((vehicle.status == Status.AT_INTERSECTION) &&
-						   (vehicle.getDistance() >= radius) &&
+						   (vehicle.getDistance() >= intersection.getRadius()) &&
 						   (vehicle.getIntersectionId() == intersection.getId())) {
-					playSound("exit_intersection_christmas");
+					playSound("exit_intersection");
 					setButtonText(btnRed, Integer.toString(db.getNLightsOfArea(currArea, "RED")));
 					setButtonText(btnGreen, Integer.toString(db.getNLightsOfArea(currArea, "GREEN")));
 					vehicle.status = Status.EXIT_INTERSECTION;
@@ -778,7 +779,7 @@ public class MainActivity extends FragmentActivity {
 						
 				// State transition: EXIT_INTERSECTION -> OUTSIDE_INTERSECTION
 				} else if ((vehicle.status == Status.EXIT_INTERSECTION) &&
-						   (vehicle.getDistance() >= radius) &&
+						   (vehicle.getDistance() >= intersection.getRadius()) &&
 						   (vehicle.getIntersectionId() == intersection.getId())) {
 					if (vehicle.suggestGreen)
 						addGreen(intersection);
